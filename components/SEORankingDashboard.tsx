@@ -76,12 +76,13 @@ const SEORankingDashboard = () => {
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/streets-v11",
         center: [-73.5673, 45.5017], // Montreal coordinates
-        zoom: 12,
+        zoom: 11,
       });
 
       map.current.on('load', () => {
         console.log('Map loaded successfully');
         setMapError('');
+        addGridLayer(map.current);
       });
 
       map.current.on('error', (e) => {
@@ -111,6 +112,103 @@ const SEORankingDashboard = () => {
       }
     };
   }, []);
+
+  const addGridLayer = (map: mapboxgl.Map | null) => {
+    if (!map) return;
+
+    const center = map.getCenter();
+    const gridSize = 5;
+    const latitudeSpacing = 0.03;
+    const longitudeCorrection = 1 / Math.cos(center.lat * (Math.PI / 180));
+    const longitudeSpacing = latitudeSpacing * longitudeCorrection;
+    const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+
+    const startLon = center.lng - (Math.floor(gridSize / 2) * longitudeSpacing);
+    const startLat = center.lat + (Math.floor(gridSize / 2) * latitudeSpacing);
+
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            const rank = Math.floor(Math.random() * 25) + 1;
+            const longitude = startLon + j * longitudeSpacing;
+            const latitude = startLat - i * latitudeSpacing;
+
+            features.push({
+                type: 'Feature',
+                properties: { rank },
+                geometry: {
+                    type: 'Point',
+                    coordinates: [longitude, latitude],
+                },
+            });
+        }
+    }
+
+    const geoJsonData: GeoJSON.FeatureCollection<GeoJSON.Point> = {
+        type: 'FeatureCollection',
+        features,
+    };
+
+    if (map.getSource('grid-source')) {
+        (map.getSource('grid-source') as mapboxgl.GeoJSONSource).setData(geoJsonData);
+    } else {
+        map.addSource('grid-source', {
+            type: 'geojson',
+            data: geoJsonData,
+        });
+    }
+
+    if (!map.getLayer('grid-circles')) {
+        map.addLayer({
+            id: 'grid-circles',
+            type: 'circle',
+            source: 'grid-source',
+            paint: {
+                'circle-radius': 24,
+                'circle-color': [
+                    'case',
+                    ['>', ['get', 'rank'], 20], '#e0e0e0',
+                    ['>=', ['get', 'rank'], 13], '#ef4444',
+                    ['>=', ['get', 'rank'], 6], '#f59e0b',
+                    '#22c55e',
+                ],
+                'circle-stroke-width': 3,
+                'circle-stroke-color': [
+                    'case',
+                    ['>', ['get', 'rank'], 20], '#bdbdbd',
+                    ['>=', ['get', 'rank'], 13], '#b91c1c',
+                    ['>=', ['get', 'rank'], 6], '#b45309',
+                    '#15803d',
+                ],
+            },
+        });
+    }
+    
+    if (!map.getLayer('grid-labels')) {
+        map.addLayer({
+            id: 'grid-labels',
+            type: 'symbol',
+            source: 'grid-source',
+            layout: {
+                'text-field': [
+                    'case',
+                    ['>', ['get', 'rank'], 20], '20+',
+                    ['to-string', ['get', 'rank']],
+                ],
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-size': 12,
+                'text-allow-overlap': true,
+                'text-ignore-placement': true,
+            },
+            paint: {
+                'text-color': [
+                    'case',
+                    ['>', ['get', 'rank'], 20], '#000000',
+                    '#FFFFFF',
+                ],
+            },
+        });
+    }
+  };
 
   return (
     <div>
