@@ -37,7 +37,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <AppSidebar user={user} variant="inset" />
       <SidebarInset>
-        <SiteHeader title="Dashboard" />
         {children}
       </SidebarInset>
     </SidebarProvider>
