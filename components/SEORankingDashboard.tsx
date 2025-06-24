@@ -74,7 +74,7 @@ const SEORankingDashboard = () => {
     try {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v11",
+        style: "mapbox://styles/mapbox/dark-v11",
         center: [-73.5673, 45.5017], // Montreal coordinates
         zoom: 12,
       });
@@ -162,7 +162,8 @@ const SEORankingDashboard = () => {
 
           <div className="flex w-full h-[600px] gap-4">
             {/* Business listings */}
-            <div className="flex flex-col w-1/3 h-full overflow-y-auto">
+            <div className="flex flex-col w-1/3 h-full overflow-y-auto custom-scrollbar">
+            
               {businesses.map((biz, index) => (
                 <Card key={index} className={`mb-2 ${biz.isYou ? "bg-gray-800 text-white" : ""}`}>
                   <CardHeader className="pb-2">
