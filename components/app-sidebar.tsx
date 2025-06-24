@@ -48,22 +48,22 @@ const data = {
   navMain: [
     {
       title: "Dashboard",
-      url: "/",
+      url: "/app",
       icon: IconDashboard,
     },
     {
       title: "Leads",
-      url: "/leads",
+      url: "/app/leads",
       icon: IconUsers,
     },
     {
       title: "Call",
-      url: "/call",
+      url: "/app/call",
       icon: IconPhone,
     },
     {
       title: "Calendar",
-      url: "/calendar",
+      url: "/app/calendar",
       icon: IconCalendar,
     },
     {
@@ -176,7 +176,12 @@ const data = {
   ],
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user?: { name: string; email: string; avatar: string } }) {
+  const sidebarUser = user || {
+    name: "shadcn",
+    email: "m@example.com",
+    avatar: "/avatars/shadcn.jpg",
+  };
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -199,7 +204,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={sidebarUser} />
       </SidebarFooter>
     </Sidebar>
   )

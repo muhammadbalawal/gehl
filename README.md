@@ -370,3 +370,14 @@ LeadIQ Pro turns cold calling from a tedious, time-consuming research nightmare 
 **Perfect for:** Anyone who makes cold calls to local businesses and is tired of wasting time on manual research.
 
 **Main benefit:** Call 10x more prospects in the same amount of time while having better conversations because you know everything about them before you dial.
+
+# Setup
+
+Create a `.env.local` file in the root with the following:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Replace with your Supabase project credentials.
