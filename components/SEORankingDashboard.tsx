@@ -9,14 +9,13 @@ import { Star } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-
-
+// Set the access token
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
 const SEORankingDashboard = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [mapError, setMapError] = useState<string>('');
 
   const businesses = [
     {
@@ -50,7 +49,6 @@ const SEORankingDashboard = () => {
     }
   ];
 
-
   const rankStats = [
     { label: "Good", value: 28.57, color: "bg-emerald-600" },
     { label: "Average", value: 38.78, color: "bg-yellow-600" },
@@ -59,38 +57,60 @@ const SEORankingDashboard = () => {
   ];
 
   useEffect(() => {
+    // Check if access token is available
+    if (!mapboxgl.accessToken) {
+      setMapError('Mapbox access token not found. Please add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to your .env.local file.');
+      return;
+    }
+
+    // Don't initialize map if it already exists
     if (map.current) return;
+    
+    // Don't initialize if container is not available
     if (!mapContainer.current) return;
 
-    console.log('Access token:', mapboxgl.accessToken); 
+    console.log('Initializing Mapbox with token:', mapboxgl.accessToken.substring(0, 20) + '...');
 
     try {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/streets-v11",
-        center: [-73.5673, 45.5017],
-        zoom: 10,
+        center: [-73.5673, 45.5017], // Montreal coordinates
+        zoom: 12,
       });
 
       map.current.on('load', () => {
         console.log('Map loaded successfully');
+        setMapError('');
       });
 
       map.current.on('error', (e) => {
         console.error('Map error:', e);
+        setMapError(`Map error: ${e.error?.message || 'Unknown error'}`);
       });
 
+      // Add navigation controls
       map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+      // Add markers for businesses (optional enhancement)
+      businesses.forEach((business, index) => {
+        // You can add markers here if you have coordinates for the businesses
+        // For now, we'll skip this since we don't have lat/lng data
+      });
+
     } catch (error) {
       console.error('Error initializing map:', error);
+      setMapError(`Failed to initialize map: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
+    // Cleanup function
     return () => {
-      if (map.current) map.current.remove();
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
     };
   }, []);
-
-
 
   return (
     <div>
@@ -99,7 +119,6 @@ const SEORankingDashboard = () => {
           <h2 className="text-lg font-bold">SEO Ranking Dashboard</h2>
         </CardHeader>
         <CardContent>
-
           {/* Side-by-side layout */}
           <div className="flex flex-col md:flex-row gap-4 mb-4">
             {/* Avg. Rank card */}
@@ -141,18 +160,20 @@ const SEORankingDashboard = () => {
             </Card>
           </div>
 
-          <div className="flex w-full h-full">
-
-            <div className="flex flex-col w-1/3 h-full">
+          <div className="flex w-full h-[600px] gap-4">
+            {/* Business listings */}
+            <div className="flex flex-col w-1/3 h-full overflow-y-auto">
               {businesses.map((biz, index) => (
-                <Card key={index} className={biz.isYou ? "bg-gray-800" : ""}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between gap-2">
+                <Card key={index} className={`mb-2 ${biz.isYou ? "bg-gray-800 text-white" : ""}`}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center justify-between gap-2 text-sm">
                       <div className="flex items-center gap-2">
-                        <span className="bg-gray-200 text-sm px-2 py-0.5 rounded-full font-medium text-gray-800">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          biz.isYou ? "bg-gray-700 text-white" : "bg-gray-200 text-gray-800"
+                        }`}>
                           {biz.rank}
                         </span>
-                        {biz.name}
+                        <span className="text-sm">{biz.name}</span>
                       </div>
                       {biz.isYou && (
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-800">
@@ -160,48 +181,57 @@ const SEORankingDashboard = () => {
                         </span>
                       )}
                     </CardTitle>
-                    <CardContent className="pt-2 space-y-1 text-sm">
-                      <div>{biz.address}</div>
-                      <div className="flex items-center gap-1 text-gray-800">
-                        <div className="flex text-gray-500">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              size={16}
-                              fill={i < Math.floor(biz.rating) ? "currentColor" : "none"}
-                              stroke="currentColor"
-                            />
-                          ))}
-                        </div>
-                        <span className="text-sm">{biz.rating.toFixed(1)}</span>
-                        <span className="text-gray-500">
-                          ({biz.reviews.toLocaleString()})
-                        </span>
-                      </div>
-                    </CardContent>
                   </CardHeader>
+                  <CardContent className="pt-0 space-y-1 text-xs">
+                    <div>{biz.address}</div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex text-yellow-500">
+                        {[...Array(5)].map((_, i) => (
+                          <Star
+                            key={i}
+                            size={12}
+                            fill={i < Math.floor(biz.rating) ? "currentColor" : "none"}
+                            stroke="currentColor"
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs">{biz.rating.toFixed(1)}</span>
+                      <span className={`text-xs ${biz.isYou ? "text-gray-300" : "text-gray-500"}`}>
+                        ({biz.reviews.toLocaleString()})
+                      </span>
+                    </div>
+                  </CardContent>
                 </Card>
               ))}
             </div>
 
-            <div
-              ref={mapContainer}
-              className="w-2/3 h-full"
-              style={{
-                borderRadius: "0px",
-                border: "2px solid red",
-                backgroundColor: "#eee",
-              }}
-            />
+            {/* Map container */}
+            <div className="w-2/3 h-full relative">
+              {mapError ? (
+                <div className="w-full h-full bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                  <div className="text-center p-4">
+                    <p className="text-red-600 font-medium mb-2">Map Error</p>
+                    <p className="text-sm text-gray-600 max-w-md">{mapError}</p>
+                    {!mapboxgl.accessToken && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Add your Mapbox token to .env.local file
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={mapContainer}
+                  className="w-full h-full rounded-lg"
+                  style={{
+                    minHeight: '400px',
+                  }}
+                />
+              )}
+            </div>
           </div>
-
-
-
-
         </CardContent>
       </Card>
-
-
     </div>
   );
 };
