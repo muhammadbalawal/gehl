@@ -4,7 +4,7 @@ function generateTwiMLWithRecording(to: string, callerId: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Start>
-    <Stream url="wss://server-wb.onrender.com" track="inbound_track" />
+    <Stream url="wss://server-wb.onrender.com" track="outbound_track" />
   </Start>
   <Dial 
     callerId="${callerId}"
