@@ -132,6 +132,10 @@ export default function DashboardCallPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const [callSid, setCallSid] = useState<string | null>(null);
   
+  // Debug callSid changes
+  useEffect(() => {
+    console.log('CallSid changed:', callSid);
+  }, [callSid]);
 
   // Trigger overview animations when tab becomes active
   useEffect(() => {
@@ -188,23 +192,47 @@ export default function DashboardCallPage() {
   // Twilio device setup
   useEffect(() => {
     const init = async () => {
-      const res = await fetch('/api/token');
-      const { token } = await res.json();
-      const device = new Device(token);
-      deviceRef.current = device;
+      try {
+        console.log('Initializing Twilio device...');
+        const res = await fetch('/api/token');
+        if (!res.ok) {
+          throw new Error(`Failed to fetch token: ${res.status}`);
+        }
+        const { token } = await res.json();
+        console.log('Token received, creating device...');
+        
+        const device = new Device(token);
+        deviceRef.current = device;
 
-      device.on('ready', () => console.log('Ready to call'));
-      device.on('error', (err) => console.error('Twilio error:', err));
-      device.on('connect', (call) => {
-        console.log('Call connected:', call.parameters.CallSid);
-        setCallSid(call.parameters.CallSid);
-        setCallState("in-call");
-      });
-      device.on('disconnect', () => {
-        console.log('Call disconnected');
-        setCallState("post-call");
-        setCallSid(null);
-      });
+        device.on('ready', () => {
+          console.log('Twilio device ready');
+        });
+        
+        device.on('error', (err) => {
+          console.error('Twilio device error:', err);
+          setCallState("idle");
+        });
+        
+        device.on('connect', (call) => {
+          console.log('Call connected:', call.parameters.CallSid);
+          setCallSid(call.parameters.CallSid);
+          setCallState("in-call");
+        });
+        
+        device.on('disconnect', () => {
+          console.log('Call disconnected');
+          setCallState("post-call");
+          setCallSid(null);
+        });
+
+        device.on('incoming', (call) => {
+          console.log('Incoming call:', call.parameters.CallSid);
+        });
+
+        console.log('Twilio device setup complete');
+      } catch (error) {
+        console.error('Failed to initialize Twilio device:', error);
+      }
     };
 
     init();
@@ -410,13 +438,23 @@ export default function DashboardCallPage() {
 
   const handleCallNow = () => {
     setCallState("calling")
-    // After 3 seconds, transition to in-call state
-    setTimeout(() => {
-      setCallState("in-call")
-    }, 3000)
-
+    
     // Connect the Twilio device
-    deviceRef.current?.connect();
+    if (deviceRef.current) {
+      deviceRef.current.connect()
+        .then((call) => {
+          console.log('Call initiated successfully:', call.parameters.CallSid);
+          setCallSid(call.parameters.CallSid);
+          setCallState("in-call");
+        })
+        .catch((error) => {
+          console.error('Failed to connect call:', error);
+          setCallState("idle");
+        });
+    } else {
+      console.error('Twilio device not initialized');
+      setCallState("idle");
+    }
   }
 
   const handleHangUp = () => {
@@ -757,7 +795,9 @@ export default function DashboardCallPage() {
                     <div className="text-center">
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
-                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid}</p>
+                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid || 'Not set'}</p>
+                      <p className="text-xs text-gray-400 mt-1">Device: {deviceRef.current ? 'Initialized' : 'Not initialized'}</p>
+                      <p className="text-xs text-gray-400 mt-1">State: {callState}</p>
                     </div>
                   </div>
                 ) : (
