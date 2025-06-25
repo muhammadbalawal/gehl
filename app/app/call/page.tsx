@@ -470,6 +470,8 @@ export default function DashboardCallPage() {
       loadExistingTranscripts(callSid)
 
       // Set up realtime subscription
+      console.log('Setting up real-time subscription for callSid:', callSid);
+      
       const subscription = supabase
         .channel('transcriptions')
         .on(
@@ -500,10 +502,16 @@ export default function DashboardCallPage() {
           } else if (status === 'CHANNEL_ERROR') {
             console.error('Error subscribing to transcriptions channel')
             setTranscriptError('Failed to connect to live transcriptions')
+          } else if (status === 'TIMED_OUT') {
+            console.error('Subscription timed out')
+            setTranscriptError('Subscription timed out')
+          } else if (status === 'CLOSED') {
+            console.log('Subscription closed')
           }
         })
 
       return () => {
+        console.log('Cleaning up real-time subscription')
         supabase.removeChannel(subscription)
       }
     } else if (callState !== "in-call") {
@@ -512,6 +520,29 @@ export default function DashboardCallPage() {
       setTranscriptError(null)
     }
   }, [callState, callSid])
+
+  // Poll for new transcripts when real-time fails
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    if (callState === "in-call" && callSid && transcriptError) {
+      console.log('Real-time failed, falling back to polling for transcripts');
+      
+      pollInterval = setInterval(async () => {
+        try {
+          await loadExistingTranscripts(callSid);
+        } catch (error) {
+          console.error('Error polling for transcripts:', error);
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [callState, callSid, transcriptError]);
 
 
 
@@ -688,6 +719,29 @@ export default function DashboardCallPage() {
       outTop20: (outTop20 / total) * 100,
     }
   }
+
+  // Test Supabase connection on mount
+  useEffect(() => {
+    const testSupabaseConnection = async () => {
+      try {
+        console.log('Testing Supabase connection...');
+        const { data, error } = await supabase
+          .from('transcriptions')
+          .select('count')
+          .limit(1);
+        
+        if (error) {
+          console.error('Supabase connection test failed:', error);
+        } else {
+          console.log('Supabase connection test successful');
+        }
+      } catch (error) {
+        console.error('Supabase connection test error:', error);
+      }
+    };
+
+    testSupabaseConnection();
+  }, []);
 
   return <>
 
