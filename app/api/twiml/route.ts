@@ -24,11 +24,19 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const to = formData.get('To') as string || '+15145703486';
-    const callerId = formData.get('From') as string || '+19786503903';
+    
+    // Use the validated Twilio phone number from environment variables
+    const validatedCallerId = process.env.TWILIO_PHONE_NUMBER;
+    const callerId = formData.get('From') as string || validatedCallerId;
     const callSid = formData.get('CallSid') as string;
 
     console.log(`📞 Generating TwiML for call: ${callSid}`);
     console.log(`📱 To: ${to}, From: ${callerId}`);
+
+    // Validate that we have a proper caller ID
+    if (!callerId || !validatedCallerId) {
+      throw new Error('No validated caller ID available');
+    }
 
     const xml = generateTwiMLWithLiveStreaming(to, callerId);
 
