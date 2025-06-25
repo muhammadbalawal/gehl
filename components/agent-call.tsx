@@ -7,12 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Phone, PhoneOff, Clock, User } from "lucide-react";
+import { Phone, PhoneOff, Clock, User, Mic, MicOff } from "lucide-react";
+
+interface TranscriptMessage {
+  transcript: string;
+  confidence: number;
+  speaker?: number;
+  timestamp: number;
+  isInterim?: boolean;
+}
 
 export default function CallCard() {
   const deviceRef = useRef<Device | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const [isCalling, setIsCalling] = useState(false);
   const [callTime, setCallTime] = useState(0);
+  const [callSid, setCallSid] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<TranscriptMessage[]>([]);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   const messages = [
     {
@@ -55,6 +67,18 @@ export default function CallCard() {
 
       device.on('ready', () => console.log('Ready to call'));
       device.on('error', (err) => console.error('Twilio error:', err));
+      device.on('connect', (call) => {
+        console.log('Call connected:', call.parameters.CallSid);
+        setCallSid(call.parameters.CallSid);
+        setIsCalling(true);
+        connectToTranscription(call.parameters.CallSid);
+      });
+      device.on('disconnect', () => {
+        console.log('Call disconnected');
+        setIsCalling(false);
+        setCallSid(null);
+        disconnectFromTranscription();
+      });
     };
 
     init();
@@ -75,6 +99,63 @@ export default function CallCard() {
     };
   }, [isCalling]);
 
+  const connectToTranscription = (sid: string) => {
+    const websocketUrl = 'wss://server-wb.onrender.com';
+    const ws = new WebSocket(`${websocketUrl}/audio-stream?callSid=${sid}`);
+    
+    ws.onopen = () => {
+      console.log('🔌 Connected to transcription service');
+      setIsTranscribing(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'transcript' || data.type === 'interim') {
+          const message: TranscriptMessage = {
+            ...data.data,
+            isInterim: data.type === 'interim'
+          };
+          
+          setLiveTranscript(prev => {
+            if (data.type === 'interim') {
+              // Replace the last interim message or add new one
+              const filtered = prev.filter(msg => !msg.isInterim);
+              return [...filtered, message];
+            } else {
+              // Add final transcript and remove interim
+              const filtered = prev.filter(msg => !msg.isInterim);
+              return [...filtered, message];
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error parsing transcript message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setIsTranscribing(false);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+      setIsTranscribing(false);
+    };
+
+    wsRef.current = ws;
+  };
+
+  const disconnectFromTranscription = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setIsTranscribing(false);
+    setLiveTranscript([]);
+  };
+
   const formatTime = (seconds: number) => {
     const mins = String(Math.floor(seconds / 60)).padStart(2, "0");
     const secs = String(seconds % 60).padStart(2, "0");
@@ -83,12 +164,19 @@ export default function CallCard() {
 
   const callClient = () => {
     deviceRef.current?.connect();
-    setIsCalling(true);
   };
 
   const hangUp = () => {
     deviceRef.current?.disconnectAll();
-    setIsCalling(false);
+  };
+
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
   };
 
   return (
@@ -155,60 +243,75 @@ export default function CallCard() {
           )}
         </div>
 
-        {/* Chat Interface */}
+        {/* Live Transcription Status */}
         {isCalling && (
+          <div className="flex items-center justify-center space-x-2 text-sm">
+            {isTranscribing ? (
+              <>
+                <Mic className="h-4 w-4 text-green-400 animate-pulse" />
+                <span className="text-green-400">Live Transcription Active</span>
+              </>
+            ) : (
+              <>
+                <MicOff className="h-4 w-4 text-zinc-500" />
+                <span className="text-zinc-500">Transcription Connecting...</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Live Transcription Interface */}
+        {isCalling && liveTranscript.length > 0 && (
           <>
             <Separator className="bg-zinc-700" />
             
             <div className="space-y-2 -mb-6">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-zinc-300">Live Conversation</h4>
+                <h4 className="text-sm font-medium text-zinc-300">Live Transcription</h4>
                 <Badge variant="outline" className="border-zinc-600 text-zinc-400 text-xs">
-                  {messages.length} messages
+                  {liveTranscript.length} messages
                 </Badge>
               </div>
 
-              {/* Enhanced Chat Messages */}
+              {/* Live Transcript Messages */}
               <div className="h-52 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                {messages.map((message) => (
-                  <div key={message.id} className="group">
-                    {message.isAgent ? (
-                      // Agent message - Left aligned
-                      <div className="flex items-start space-x-3">
-                        <Avatar className="h-8 w-8 bg-zinc-700 border border-zinc-600 flex-shrink-0">
-                          <AvatarFallback className="bg-zinc-700 text-zinc-300 text-xs">
-                            SD
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs font-medium text-zinc-300">Sofia Davis</span>
-                            <span className="text-xs text-zinc-500">{message.timestamp}</span>
-                          </div>
-                          <div className="bg-zinc-700/80 backdrop-blur-sm text-zinc-100 rounded-2xl rounded-tl-md px-4 py-3 max-w-[85%] text-sm shadow-sm border border-zinc-600/30">
-                            {message.content}
-                          </div>
+                {liveTranscript.map((message, index) => (
+                  <div key={index} className="group">
+                    <div className="flex items-start space-x-3">
+                      <Avatar className="h-8 w-8 bg-zinc-700 border border-zinc-600 flex-shrink-0">
+                        <AvatarFallback className="bg-zinc-700 text-zinc-300 text-xs">
+                          {message.speaker !== undefined ? `S${message.speaker}` : 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-medium text-zinc-300">
+                            {message.speaker !== undefined ? `Speaker ${message.speaker}` : 'Unknown'}
+                          </span>
+                          <span className="text-xs text-zinc-500">
+                            {formatTimestamp(message.timestamp)}
+                          </span>
+                          {message.isInterim && (
+                            <Badge variant="outline" className="border-yellow-600 text-yellow-400 text-xs">
+                              Interim
+                            </Badge>
+                          )}
+                        </div>
+                        <div className={`backdrop-blur-sm rounded-2xl rounded-tl-md px-4 py-3 max-w-[85%] text-sm shadow-sm border ${
+                          message.isInterim 
+                            ? 'bg-yellow-900/20 text-yellow-200 border-yellow-600/30' 
+                            : 'bg-zinc-700/80 text-zinc-100 border-zinc-600/30'
+                        }`}>
+                          {message.transcript}
+                          {message.isInterim && (
+                            <span className="inline-block w-2 h-4 bg-yellow-400 ml-1 animate-pulse"></span>
+                          )}
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          Confidence: {Math.round(message.confidence * 100)}%
                         </div>
                       </div>
-                    ) : (
-                      // Customer message - Right aligned
-                      <div className="flex items-start space-x-3 justify-end">
-                        <div className="flex-1 space-y-1 flex flex-col items-end">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs text-zinc-500">{message.timestamp}</span>
-                            <span className="text-xs font-medium text-zinc-300">Customer</span>
-                          </div>
-                          <div className="bg-zinc-300/90 backdrop-blur-sm text-zinc-800 rounded-2xl rounded-tr-md px-4 py-3 max-w-[85%] text-sm shadow-sm">
-                            {message.content}
-                          </div>
-                        </div>
-                        <Avatar className="h-8 w-8 bg-zinc-600 border border-zinc-500 flex-shrink-0">
-                          <AvatarFallback className="bg-zinc-600 text-zinc-200 text-xs">
-                            <User className="h-4 w-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
