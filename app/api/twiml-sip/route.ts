@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   >
     <Sip>
       <Stream url="wss://server-wb.onrender.com" />
-      sip:${targetNumber}@myapp.sip.twilio.com
+      sip:${targetNumber}@balawal.sip.twilio.com
     </Sip>
   </Dial>
 </Response>`;
