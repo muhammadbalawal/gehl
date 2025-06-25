@@ -132,97 +132,6 @@ export default function DashboardCallPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const [callSid, setCallSid] = useState<string | null>(null);
   
-  // Debug callSid changes
-  useEffect(() => {
-    console.log('CallSid changed:', callSid);
-  }, [callSid]);
-
-  // Connect to websocket server to receive callSid
-  useEffect(() => {
-    const connectToWebSocket = () => {
-      try {
-        // Connect to your websocket server
-        const ws = new WebSocket('wss://server-wb.onrender.com/frontend');
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          console.log('Connected to websocket server for callSid updates');
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'call_started' && data.callSid) {
-              console.log('Received callSid from websocket:', data.callSid);
-              setCallSid(data.callSid);
-              setCallState("in-call");
-            }
-          } catch (error) {
-            console.error('Error parsing websocket message:', error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket connection closed');
-        };
-      } catch (error) {
-        console.error('Failed to connect to websocket:', error);
-      }
-    };
-
-    connectToWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, []);
-
-  // Poll for callSid when in calling state
-  useEffect(() => {
-    let pollInterval: NodeJS.Timeout | null = null;
-    
-    if (callState === "calling") {
-      console.log('Starting to poll for callSid...');
-      
-      pollInterval = setInterval(async () => {
-        try {
-          // Get the most recent callSid from the transcriptions table
-          const { data, error } = await supabase
-            .from('transcriptions')
-            .select('call_sid')
-            .order('timestamp', { ascending: false })
-            .limit(1);
-
-          if (error) {
-            console.error('Error polling for callSid:', error);
-            return;
-          }
-
-          if (data && data.length > 0 && data[0].call_sid) {
-            const newCallSid = data[0].call_sid;
-            console.log('Found callSid in database:', newCallSid);
-            setCallSid(newCallSid);
-            setCallState("in-call");
-            return; // Stop polling
-          }
-        } catch (error) {
-          console.error('Error polling for callSid:', error);
-        }
-      }, 1000); // Poll every second
-    }
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-    };
-  }, [callState]);
 
   // Trigger overview animations when tab becomes active
   useEffect(() => {
@@ -279,47 +188,23 @@ export default function DashboardCallPage() {
   // Twilio device setup
   useEffect(() => {
     const init = async () => {
-      try {
-        console.log('Initializing Twilio device...');
-        const res = await fetch('/api/token');
-        if (!res.ok) {
-          throw new Error(`Failed to fetch token: ${res.status}`);
-        }
-        const { token } = await res.json();
-        console.log('Token received, creating device...');
-        
-        const device = new Device(token);
-        deviceRef.current = device;
+      const res = await fetch('/api/token');
+      const { token } = await res.json();
+      const device = new Device(token);
+      deviceRef.current = device;
 
-        device.on('ready', () => {
-          console.log('Twilio device ready');
-        });
-        
-        device.on('error', (err) => {
-          console.error('Twilio device error:', err);
-          setCallState("idle");
-        });
-        
-        device.on('connect', (call) => {
-          console.log('Call connected:', call.parameters.CallSid);
-          setCallSid(call.parameters.CallSid);
-          setCallState("in-call");
-        });
-        
-        device.on('disconnect', () => {
-          console.log('Call disconnected');
-          setCallState("post-call");
-          setCallSid(null);
-        });
-
-        device.on('incoming', (call) => {
-          console.log('Incoming call:', call.parameters.CallSid);
-        });
-
-        console.log('Twilio device setup complete');
-      } catch (error) {
-        console.error('Failed to initialize Twilio device:', error);
-      }
+      device.on('ready', () => console.log('Ready to call'));
+      device.on('error', (err) => console.error('Twilio error:', err));
+      device.on('connect', (call) => {
+        console.log('Call connected:', call.parameters.CallSid);
+        setCallSid(call.parameters.CallSid);
+        setCallState("in-call");
+      });
+      device.on('disconnect', () => {
+        console.log('Call disconnected');
+        setCallState("post-call");
+        setCallSid(null);
+      });
     };
 
     init();
@@ -470,8 +355,6 @@ export default function DashboardCallPage() {
       loadExistingTranscripts(callSid)
 
       // Set up realtime subscription
-      console.log('Setting up real-time subscription for callSid:', callSid);
-      
       const subscription = supabase
         .channel('transcriptions')
         .on(
@@ -502,16 +385,10 @@ export default function DashboardCallPage() {
           } else if (status === 'CHANNEL_ERROR') {
             console.error('Error subscribing to transcriptions channel')
             setTranscriptError('Failed to connect to live transcriptions')
-          } else if (status === 'TIMED_OUT') {
-            console.error('Subscription timed out')
-            setTranscriptError('Subscription timed out')
-          } else if (status === 'CLOSED') {
-            console.log('Subscription closed')
           }
         })
 
       return () => {
-        console.log('Cleaning up real-time subscription')
         supabase.removeChannel(subscription)
       }
     } else if (callState !== "in-call") {
@@ -520,29 +397,6 @@ export default function DashboardCallPage() {
       setTranscriptError(null)
     }
   }, [callState, callSid])
-
-  // Poll for new transcripts when real-time fails
-  useEffect(() => {
-    let pollInterval: NodeJS.Timeout | null = null;
-    
-    if (callState === "in-call" && callSid && transcriptError) {
-      console.log('Real-time failed, falling back to polling for transcripts');
-      
-      pollInterval = setInterval(async () => {
-        try {
-          await loadExistingTranscripts(callSid);
-        } catch (error) {
-          console.error('Error polling for transcripts:', error);
-        }
-      }, 2000); // Poll every 2 seconds
-    }
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-    };
-  }, [callState, callSid, transcriptError]);
 
 
 
@@ -556,36 +410,13 @@ export default function DashboardCallPage() {
 
   const handleCallNow = () => {
     setCallState("calling")
-    
-    // Initiate call through the dedicated call initiation endpoint
-    fetch('/api/initiate-call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: currentLead.phone,
-      })
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then(data => {
-      console.log('Call initiation response:', data);
-      if (data.success) {
-        console.log('Call initiated successfully, waiting for callSid from websocket...');
-        // The callSid will be received via websocket when the call actually starts
-      } else {
-        throw new Error('Failed to initiate call');
-      }
-    })
-    .catch(error => {
-      console.error('Failed to initiate call:', error);
-      setCallState("idle");
-    });
+    // After 3 seconds, transition to in-call state
+    setTimeout(() => {
+      setCallState("in-call")
+    }, 3000)
+
+    // Connect the Twilio device
+    deviceRef.current?.connect();
   }
 
   const handleHangUp = () => {
@@ -719,29 +550,6 @@ export default function DashboardCallPage() {
       outTop20: (outTop20 / total) * 100,
     }
   }
-
-  // Test Supabase connection on mount
-  useEffect(() => {
-    const testSupabaseConnection = async () => {
-      try {
-        console.log('Testing Supabase connection...');
-        const { data, error } = await supabase
-          .from('transcriptions')
-          .select('count')
-          .limit(1);
-        
-        if (error) {
-          console.error('Supabase connection test failed:', error);
-        } else {
-          console.log('Supabase connection test successful');
-        }
-      } catch (error) {
-        console.error('Supabase connection test error:', error);
-      }
-    };
-
-    testSupabaseConnection();
-  }, []);
 
   return <>
 
@@ -949,9 +757,7 @@ export default function DashboardCallPage() {
                     <div className="text-center">
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
-                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid || 'Not set'}</p>
-                      <p className="text-xs text-gray-400 mt-1">Device: {deviceRef.current ? 'Initialized' : 'Not initialized'}</p>
-                      <p className="text-xs text-gray-400 mt-1">State: {callState}</p>
+                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid}</p>
                     </div>
                   </div>
                 ) : (
