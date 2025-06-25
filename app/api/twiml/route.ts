@@ -4,13 +4,10 @@ function generateTwiMLWithRecording(to: string, callerId: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Start>
-    <Stream url="wss://server-wb.onrender.com" track="both_tracks" />
+    <Stream url="wss://server-wb.onrender.com" track="inbound_track" />
   </Start>
   <Dial 
     callerId="${callerId}"
-    record="record-from-answer-dual"
-    recordingStatusCallback="${process.env.NEXT_PUBLIC_BASE_URL}/api/recording-complete"
-    recordingStatusCallbackEvent="completed"
   >
     <Number>${to}</Number>
   </Dial>
