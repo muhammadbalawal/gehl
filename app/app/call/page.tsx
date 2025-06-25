@@ -26,8 +26,8 @@ import { LocalBusinessTab } from "@/components/call-tabs/local-business-tab"
 import { SocialMediaTab } from "@/components/call-tabs/social-media-tab"
 import { WebsiteTab } from "@/components/call-tabs/website-tab"
 import { Lead } from "@/components/call-tabs/types"
-import { Device } from '@twilio/voice-sdk';
-
+import { Device } from '@twilio/voice-sdk'
+import { supabase } from "@/lib/supabaseClient"
 
 interface Message {
   role: 'agent' | 'user';
@@ -35,7 +35,13 @@ interface Message {
   message: string;
 }
 
-
+interface TranscriptRow {
+  id: number;
+  call_sid: string;
+  speaker: string;
+  transcript: string;
+  timestamp: string;
+}
 
 // Lead data
 const leadsData: Lead[] = [
@@ -218,43 +224,9 @@ export default function DashboardCallPage() {
   const [animateWebsite, setAnimateWebsite] = useState(false)
   const [animateOverview, setAnimateOverview] = useState(false)
 
-  const transcriptMessages: Message[] = [
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Hi Dr. Biskup, this is Sarah from Digital Growth Solutions. I hope I'm not catching you at a bad time. I'm calling because I noticed your dental practice could benefit from improved online visibility.",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Oh, um, what exactly are you offering?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "We specialize in SEO services specifically for dental practices. We can help you rank higher on Google when people search for 'dentist near me' or 'teeth whitening West Island'. Are you currently doing any digital marketing?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Not really, just our basic website. How much does something like this cost?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Our dental SEO packages start at $1,200 per month, but I'd love to offer you a free website audit first. Would you be interested in seeing how your practice currently appears online?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "That's quite expensive. Let me think about it and discuss with my partner.",
-    },
-  ]
-
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
+  const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
+  const [transcriptError, setTranscriptError] = useState<string | null>(null)
 
   // Popover states
   const [callbackDate, setCallbackDate] = useState<Date>()
@@ -330,23 +302,108 @@ export default function DashboardCallPage() {
     }
   }, [callState])
 
-  useEffect(() => {
-    if (callState === "in-call") {
-      setDisplayedMessages([]) // Clear previous messages
-      const timeouts: NodeJS.Timeout[] = []
+  // Function to convert database transcript to Message format
+  const convertTranscriptToMessage = (transcript: TranscriptRow): Message => {
+    // Map speaker to role and name
+    // Check for various agent indicators
+    const speakerLower = transcript.speaker.toLowerCase()
+    const isAgent = speakerLower.includes('agent') || 
+                   speakerLower.includes('sarah') ||
+                   speakerLower.includes('ai') ||
+                   speakerLower.includes('assistant') ||
+                   speakerLower.includes('bot') ||
+                   speakerLower === 'agent' ||
+                   speakerLower === '0' // Sometimes speaker 0 is the agent
+    
+    return {
+      role: isAgent ? 'agent' : 'user',
+      name: isAgent ? 'Sarah Miller' : currentLead.name.split(' ')[0] || 'Customer',
+      message: transcript.transcript
+    }
+  }
 
-      transcriptMessages.forEach((message, index) => {
-        const timeout = setTimeout(() => {
-          setDisplayedMessages(prev => [...prev, message])
-        }, (index + 1) * 4000) // 4 second delay between messages
-        timeouts.push(timeout)
-      })
+  // Load existing transcripts for the current call
+  const loadExistingTranscripts = async (currentCallSid: string) => {
+    if (!currentCallSid) return
+
+    setIsLoadingTranscripts(true)
+    setTranscriptError(null)
+    try {
+      console.log('Loading transcripts for call SID:', currentCallSid)
+      const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('call_sid', currentCallSid)
+        .order('timestamp', { ascending: true })
+
+      if (error) {
+        console.error('Error loading transcripts:', error)
+        setTranscriptError(`Failed to load transcripts: ${error.message}`)
+        return
+      }
+
+      if (data) {
+        console.log('Loaded transcripts:', data.length, 'messages')
+        const messages = data.map(convertTranscriptToMessage)
+        setDisplayedMessages(messages)
+      }
+    } catch (error) {
+      console.error('Error loading transcripts:', error)
+      setTranscriptError('Failed to load transcripts')
+    } finally {
+      setIsLoadingTranscripts(false)
+    }
+  }
+
+  // Set up realtime subscription for new transcripts
+  useEffect(() => {
+    if (callState === "in-call" && callSid) {
+      // Load existing transcripts first
+      loadExistingTranscripts(callSid)
+
+      // Set up realtime subscription
+      const subscription = supabase
+        .channel('transcriptions')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'transcriptions',
+            filter: `call_sid=eq.${callSid}`
+          },
+          (payload) => {
+            console.log('New transcript received:', payload)
+            try {
+              const newTranscript = payload.new as TranscriptRow
+              const newMessage = convertTranscriptToMessage(newTranscript)
+              setDisplayedMessages(prev => [...prev, newMessage])
+              setTranscriptError(null) // Clear any previous errors
+            } catch (error) {
+              console.error('Error processing new transcript:', error)
+              setTranscriptError('Error processing new transcript')
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('Subscription status:', status)
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to transcriptions for call:', callSid)
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Error subscribing to transcriptions channel')
+            setTranscriptError('Failed to connect to live transcriptions')
+          }
+        })
 
       return () => {
-        timeouts.forEach(clearTimeout)
+        supabase.removeChannel(subscription)
       }
+    } else if (callState !== "in-call") {
+      // Clear messages and errors when not in call
+      setDisplayedMessages([])
+      setTranscriptError(null)
     }
-  }, [callState])
+  }, [callState, callSid])
 
 
 
@@ -677,9 +734,44 @@ export default function DashboardCallPage() {
                 </div>
               </div>
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
-                <ChatTranscript
-                  messages={displayedMessages}
-                />
+                {isLoadingTranscripts ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="animate-spin h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-500">Loading transcripts...</p>
+                    </div>
+                  </div>
+                ) : transcriptError ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <span className="text-red-600 text-lg">!</span>
+                      </div>
+                      <p className="text-sm text-red-600 mb-2">Error loading transcripts</p>
+                      <p className="text-xs text-gray-400">{transcriptError}</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={() => callSid && loadExistingTranscripts(callSid)}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                ) : displayedMessages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
+                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <ChatTranscript
+                    messages={displayedMessages}
+                  />
+                )}
               </div>
             </div>
           ) : (
