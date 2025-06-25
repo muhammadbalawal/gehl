@@ -22,7 +22,7 @@ export function ChatTranscript({ messages }: ChatTranscriptProps) {
         {messages.map((message, index) => (
           <div
             key={index}
-            className={`flex items-end gap-2 ${
+            className={`flex items-end gap-2 transition-all animate-in fade-in-0 slide-in-from-bottom-4 duration-500 ${
               message.role === "user" ? "justify-end" : "justify-start"
             }`}
           >

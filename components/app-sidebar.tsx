@@ -13,7 +13,6 @@ import {
   IconFileWord,
   IconFolder,
   IconHelp,
-  IconInnerShadowTop,
   IconLayout,
   IconListDetails,
   IconMail,
@@ -192,8 +191,8 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <a href="#">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">GEHL Inc.</span>
+                <img src="/logo.png" alt="Kinteli Logo" className="!size-5" />
+                <span className="text-base font-semibold">Kinteli</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

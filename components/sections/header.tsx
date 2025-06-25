@@ -31,46 +31,47 @@ export default function Header() {
   return (
     <header
       className={
-        "relative sticky top-0 z-50 py-2 bg-background/60 backdrop-blur"
+        "relative sticky top-0 z-50 py-4 bg-background/60 backdrop-blur"
       }
     >
-      <div className="flex justify-between items-center container">
-        <Link
-          href="/"
-          title="brand-logo"
-          className="relative mr-6 flex items-center space-x-2"
-        >
-          <Icons.logo className="w-auto h-[40px]" />
-          <span className="font-bold text-xl">{siteConfig.name}</span>
-        </Link>
+      <div className="flex items-center container px-8">
+        <div className="flex items-center space-x-8">
+          <Link
+            href="/"
+            title="brand-logo"
+            className="flex items-center space-x-2"
+          >
+            <img src="/logo.png" alt="Kinteli Logo" className="w-auto h-[40px]" />
+            <span className="font-bold text-xl">{siteConfig.name}</span>
+          </Link>
 
-        <div className="hidden lg:block">
-          <div className="flex items-center ">
-            <nav className="mr-10">
+          <div className="hidden lg:block">
+            <nav>
               <Menu />
             </nav>
-
-            <div className="gap-2 flex">
-              <Link
-                href="/login"
-                className={buttonVariants({ variant: "outline" })}
-              >
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                className={cn(
-                  buttonVariants({ variant: "default" }),
-                  "w-full sm:w-auto text-background flex gap-2"
-                )}
-              >
-                <Icons.logo className="h-6 w-6" />
-                Get Started for Free
-              </Link>
-            </div>
           </div>
         </div>
-        <div className="mt-2 cursor-pointer block lg:hidden">
+
+        <div className="hidden lg:flex gap-2 ml-auto">
+          <Link
+            href="/login"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Login
+          </Link>
+          <Link
+            href="/signup"
+            className={cn(
+              buttonVariants({ variant: "default" }),
+              "w-full sm:w-auto text-background flex gap-2"
+            )}
+          >
+            <img src="/logo.png" alt="Kinteli Logo" className="h-6 w-6" />
+            Get Started for Free
+          </Link>
+        </div>
+
+        <div className="mt-2 cursor-pointer block lg:hidden ml-auto">
           <Drawer />
         </div>
       </div>

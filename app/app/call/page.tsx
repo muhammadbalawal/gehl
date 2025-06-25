@@ -4,28 +4,116 @@ import { SiteHeader } from "@/components/site-header"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import dynamic from "next/dynamic"
 import { useState, useEffect, useRef } from "react"
-import { Mic, MicOff, Phone } from "lucide-react"
-import { FaFacebook, FaInstagram, FaGoogle } from "react-icons/fa"
+import { Mic, MicOff, Phone, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Tag } from "lucide-react"
 import { ChatTranscript } from "@/components/chat-transcript"
-import mapboxgl from "mapbox-gl"
-import 'mapbox-gl/dist/mapbox-gl.css'
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { format } from "date-fns"
+import { OverviewTab } from "@/components/call-tabs/overview-tab"
+import { LocalBusinessTab } from "@/components/call-tabs/local-business-tab"
+import { SocialMediaTab } from "@/components/call-tabs/social-media-tab"
+import { WebsiteTab } from "@/components/call-tabs/website-tab"
+import { Lead } from "@/components/call-tabs/types"
 
-// Dynamic import for GaugeComponent to avoid SSR issues
-const GaugeComponent = dynamic(() => import('react-gauge-component'), { ssr: false })
+interface Message {
+  role: 'agent' | 'user';
+  name: string;
+  message: string;
+}
 
-// Set the access token
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || ''
+// Lead data
+const leadsData: Lead[] = [
+  {
+    id: 1,
+    name: "Robert Biskup Dentiste West Island Dentist",
+    shortName: "Robert Biskup Dentiste",
+    logo: "/dentist_logo.png",
+    category: "Dental Clinic",
+    rating: 4.2,
+    totalReviews: 1039,
+    hours: "9:00 AM - 5:00 PM",
+    phone: "(514) 123-4567",
+    email: "contact@biskupdentiste.com",
+    address: "123 Cakewalk Avenue, Montreal, QC",
+    website: "biskupdentiste.com",
+    photos: 23,
+    monthlyVisitors: 1300,
+    facebook: {
+      name: "Robert Biskup Dentiste West Island Dentist",
+      url: "facebook.com/robertbiskupdentiste",
+      followers: 1247,
+      lastPost: "3 days ago",
+      runningAds: true,
+      images: ["/facebook1.jpg", "/facebook2.jpg", "/facebook3.jpg"]
+    },
+    instagram: {
+      name: "Robert Biskup",
+      handle: "@robertbiskup",
+      followers: 892,
+      lastPost: "1 week ago",
+      runningAds: false,
+      images: ["/instagram1.jpg", "/instagram2.jpg", "/instagram3.jpg"]
+    },
+    google: {
+      name: "Robert Biskup Dentiste West Island Dentist",
+      url: "business.google.com/robertbiskupdentiste",
+      lastPost: "2 weeks ago",
+      runningAds: true,
+      images: ["/google1.png"]
+    },
+    websiteImage: "/dentist_website.png"
+  },
+  {
+    id: 2,
+    name: "Dentists Of South West One",
+    shortName: "Dentists Of South West One",
+    logo: "/second_dentist_logo.png",
+    category: "Dental Clinic",
+    rating: 3.8,
+    totalReviews: 587,
+    hours: "8:00 AM - 6:00 PM",
+    phone: "(514) 987-6543",
+    email: "info@southwestone.com",
+    address: "456 Wellington Street, Montreal, QC",
+    website: "southwestone.com",
+    photos: 15,
+    monthlyVisitors: 950,
+    facebook: {
+      name: "Clinique dentaire et d'implantologie South West One",
+      url: "facebook.com/southwestone",
+      followers: 892,
+      lastPost: "1 week ago",
+      runningAds: false,
+      images: ["/second_facebook1.jpg", "/second_facebook2.jpg", "/second_facebook3.jpg"]
+    },
+    instagram: null, // No Instagram page
+    google: {
+      name: "Dentists Of South West One",
+      url: "business.google.com/southwestone",
+      lastPost: "1 week ago",
+      runningAds: true,
+      images: ["/second_google1.png"]
+    },
+    websiteImage: "/second_dentist_website.png"
+  }
+]
 
 export default function DashboardCallPage() {
-  const [callState, setCallState] = useState<"idle" | "in-call" | "post-call">("idle")
+  const [callState, setCallState] = useState<"idle" | "calling" | "in-call" | "post-call">("idle")
   const [isMuted, setIsMuted] = useState(false)
   const [time, setTime] = useState(0)
-  const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<mapboxgl.Map | null>(null)
-  const [mapError, setMapError] = useState<string>('')
   const [activeTab, setActiveTab] = useState("lead-overview")
   
   // Trigger overview animations when tab becomes active
@@ -82,11 +170,82 @@ export default function DashboardCallPage() {
   const [locationCardHeight, setLocationCardHeight] = useState(450)
   const [websiteCardHeight, setWebsiteCardHeight] = useState(600)
   const [reviewsCardHeight, setReviewsCardHeight] = useState(450)
+  const [callInterfaceHeight, setCallInterfaceHeight] = useState(500)
   const [animateRanks, setAnimateRanks] = useState(false)
   const [animateSocial, setAnimateSocial] = useState(false)
   const [animateLocalBusiness, setAnimateLocalBusiness] = useState(false)
   const [animateWebsite, setAnimateWebsite] = useState(false)
   const [animateOverview, setAnimateOverview] = useState(false)
+  
+  const transcriptMessages: Message[] = [
+      {
+        role: "agent",
+        name: "Sarah Miller",
+        message:
+          "Hi Dr. Biskup, this is Sarah from Digital Growth Solutions. I hope I'm not catching you at a bad time. I'm calling because I noticed your dental practice could benefit from improved online visibility.",
+      },
+      {
+        role: "user",
+        name: "Dr. Robert Biskup",
+        message: "Oh, um, what exactly are you offering?",
+      },
+      {
+        role: "agent",
+        name: "Sarah Miller",
+        message:
+          "We specialize in SEO services specifically for dental practices. We can help you rank higher on Google when people search for 'dentist near me' or 'teeth whitening West Island'. Are you currently doing any digital marketing?",
+      },
+      {
+        role: "user",
+        name: "Dr. Robert Biskup",
+        message: "Not really, just our basic website. How much does something like this cost?",
+      },
+      {
+        role: "agent",
+        name: "Sarah Miller",
+        message:
+          "Our dental SEO packages start at $1,200 per month, but I'd love to offer you a free website audit first. Would you be interested in seeing how your practice currently appears online?",
+      },
+      {
+        role: "user",
+        name: "Dr. Robert Biskup",
+        message: "That's quite expensive. Let me think about it and discuss with my partner.",
+      },
+    ]
+
+  const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
+  
+  // Popover states
+  const [callbackDate, setCallbackDate] = useState<Date>()
+  const [reminderDate, setReminderDate] = useState<Date>()
+  const [status, setStatus] = useState<string>("")
+  const [callbackOpen, setCallbackOpen] = useState(false)
+  const [reminderOpen, setReminderOpen] = useState(false)
+  
+  // Lead navigation
+  const [currentLeadIndex, setCurrentLeadIndex] = useState(0)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const currentLead = leadsData[currentLeadIndex]
+  
+  const handleNext = () => {
+    setIsTransitioning(true)
+    setTimeout(() => {
+      setCurrentLeadIndex((prev) => (prev + 1) % leadsData.length)
+      setTimeout(() => {
+        setIsTransitioning(false)
+      }, 50)
+    }, 300)
+  }
+  
+  const handleBack = () => {
+    setIsTransitioning(true)
+    setTimeout(() => {
+      setCurrentLeadIndex((prev) => (prev - 1 + leadsData.length) % leadsData.length)
+      setTimeout(() => {
+        setIsTransitioning(false)
+      }, 50)
+    }, 300)
+  }
 
   useEffect(() => {
     const updateCardHeights = () => {
@@ -104,6 +263,10 @@ export default function DashboardCallPage() {
       
       // Reviews card: 70% of available height (same as location card)
       setReviewsCardHeight(Math.max(350, seventyPercent)) // Minimum 350px
+      
+      // Call interface card: Use all available height minus space for top buttons (3 buttons ~120px) and bottom buttons (~60px)
+      const callInterfaceAvailable = availableHeight - 60 // Space for top and bottom buttons + margins
+      setCallInterfaceHeight(Math.max(400, callInterfaceAvailable)) // Minimum 400px
     }
 
     updateCardHeights()
@@ -127,60 +290,24 @@ export default function DashboardCallPage() {
   }, [callState])
 
   useEffect(() => {
-    // Only initialize map when local business tab is active
-    if (activeTab !== "local-business") return
-    
-    // Check if access token is available
-    if (!mapboxgl.accessToken) {
-      setMapError('Mapbox access token not found. Please add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to your .env.local file.')
-      return
-    }
-
-    // Don't initialize map if it already exists
-    if (map.current) return
-
-    if (!mapContainer.current) {
-      setMapError('Map container not found')
-      return
-    }
-
-    console.log('Initializing Mapbox with token:', mapboxgl.accessToken ? mapboxgl.accessToken.substring(0, 20) + '...' : 'No token')
-
-    try {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [-73.5673, 45.5017], // Montreal coordinates (Dr. Biskup's area)
-        zoom: 13,
+    if (callState === "in-call") {
+      setDisplayedMessages([]) // Clear previous messages
+      const timeouts: NodeJS.Timeout[] = []
+      
+      transcriptMessages.forEach((message, index) => {
+          const timeout = setTimeout(() => {
+              setDisplayedMessages(prev => [...prev, message])
+          }, (index + 1) * 4000) // 4 second delay between messages
+          timeouts.push(timeout)
       })
 
-      map.current.on('load', () => {
-        console.log('Map loaded successfully')
-        setMapError('')
-        
-        // Add the 5x5 grid of points
-        if (map.current) {
-          addGridLayer(map.current)
-        }
-      })
-
-      map.current.on('error', (e) => {
-        console.error('Map error:', e)
-        setMapError(`Map error: ${e.error?.message || 'Unknown error'}`)
-      })
-
-    } catch (error) {
-      console.error('Error initializing map:', error)
-      setMapError(`Failed to initialize map: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-
-    return () => {
-      if (map.current) {
-        map.current.remove()
-        map.current = null
+      return () => {
+          timeouts.forEach(clearTimeout)
       }
     }
-  }, [activeTab])
+  }, [callState])
+
+
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60)
@@ -191,7 +318,11 @@ export default function DashboardCallPage() {
   }
 
   const handleCallNow = () => {
-    setCallState("in-call")
+    setCallState("calling")
+    // After 3 seconds, transition to in-call state
+    setTimeout(() => {
+      setCallState("in-call")
+    }, 3000)
   }
 
   const handleHangUp = () => {
@@ -328,7 +459,9 @@ export default function DashboardCallPage() {
     <SiteHeader title="Call" />
     <div className="flex flex-row gap-4 p-4 flex-1 min-h-0">
         <div className="w-[70%] flex flex-col">
-          <h1 className="mb-4 text-2xl font-bold">Robert Biskup Dentiste West Island Dentist</h1>
+          <h1 className={`mb-4 text-2xl font-bold transition-all duration-300 ${isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
+            {currentLead.name}
+          </h1>
           
           <Tabs defaultValue="lead-overview" className="flex-1 flex flex-col" onValueChange={setActiveTab}>
             <TabsList className="w-fit mb-4">
@@ -339,622 +472,104 @@ export default function DashboardCallPage() {
             </TabsList>
             
             <TabsContent value="lead-overview" className="flex-1">
-              <div className="h-full flex gap-4">
-                {/* Left Card: General Information */}
-                <div className="w-1/2 h-full">
-                  <Card className={`h-full p-6 overflow-auto transition-all duration-700 ease-out ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    <div className="flex flex-col items-center mb-8">
-                      <div className="relative mb-4">
-                        <img src="/dentist_logo.png" alt="Dentist Logo" className="w-28 h-28 rounded-full object-cover border-4 border-gray-600 shadow-lg" />
-                        <div className="absolute -bottom-2 -right-2 bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">✓</span>
-                        </div>
-                      </div>
-                      <h3 className="text-2xl font-bold text-white mb-1">Robert Biskup Dentiste</h3>
-                                              <p className="text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full">Dental Clinic</p>
-                      <div className="flex items-center mt-3">
-                        <div className="flex text-yellow-400">★★★★☆</div>
-                        <span className="text-gray-400 text-sm ml-2">(4.2/5)</span>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                                             <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">📝</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Reviews</span>
-                         <span className="text-white font-semibold">1,039</span>
-                       </div>
-                       <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">🕒</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Hours</span>
-                         <span className="text-white font-semibold">9:00 AM - 5:00 PM</span>
-                       </div>
-                       <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">📞</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Phone</span>
-                         <span className="text-white font-semibold">(514) 123-4567</span>
-                       </div>
-                       <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">📧</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Email</span>
-                         <span className="text-white font-semibold text-sm">contact@biskupdentiste.com</span>
-                       </div>
-                       <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">📍</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Address</span>
-                         <span className="text-white font-semibold text-sm">123 Cakewalk Avenue, Montreal, QC</span>
-                       </div>
-                       <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">🌐</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Website</span>
-                         <a href="#" className="text-white hover:text-gray-300 transition-colors font-semibold">biskupdentiste.com</a>
-                       </div>
-                        <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-                         <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                           <span className="text-white">📸</span>
-                         </div>
-                         <span className="w-1/3 text-gray-400 text-sm">Photos</span>
-                         <span className="text-white font-semibold">23</span>
-                       </div>
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Right Column */}
-                <div className="w-1/2 h-full flex flex-col gap-4">
-                  {/* Top Right Card: Recent Reviews */}
-                  <div>
-                    <Card className={`p-6 transition-all duration-700 ease-out delay-200 ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`} style={{ height: `${reviewsCardHeight}px` }}>
-                      <h3 className="text-lg font-semibold mb-4 text-white">Recent Reviews</h3>
-                      <ScrollArea className="h-[calc(100%-3rem)]">
-                        <div className="space-y-4 pr-4">
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">Alice M.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Dr. Biskup and his team are fantastic. Very professional and friendly. I highly recommend them!"</p>
-                          </div>
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">John D.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Great experience, the clinic is clean and modern. The staff is welcoming. Only downside is the waiting time."</p>
-                          </div>
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">Sarah P.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Best dentist in the West Island. Painless procedure and very reassuring."</p>
-                          </div>
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">Michael R.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Excellent service from start to finish. Dr. Biskup explained everything clearly and the procedure was completely painless."</p>
-                          </div>
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">Emma L.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Very satisfied with my dental cleaning. The hygienist was gentle and thorough. Appointment was on time."</p>
-                          </div>
-                          <div className="border-b border-gray-700 pb-3">
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">David K.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Outstanding dental care! The office is spotless and the staff made me feel comfortable throughout my visit."</p>
-                          </div>
-                          <div>
-                            <div className="flex items-center mb-1">
-                              <span className="font-semibold text-white">Jennifer T.</span>
-                              <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                            </div>
-                            <p className="text-sm text-gray-300">"Good experience overall. The location is convenient and parking is easy. Would recommend to others in the area."</p>
-                          </div>
-                        </div>
-                      </ScrollArea>
-                    </Card>
-                  </div>
-
-                                    {/* Bottom Right Card: Key Metrics */}
-                  <div className="h-[30%]">
-                    <Card className={`h-full p-4 transition-all duration-700 ease-out delay-400 ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                      <h3 className="text-lg font-semibold mb-3 text-white text-center">Key Metrics</h3>
-                      <div className="grid grid-cols-2 gap-3 h-full">
-                        <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                          <span className="text-2xl font-bold text-white">1,300</span>
-                          <span className="text-xs text-gray-400 text-center">Monthly Visitors</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                          <span className="text-2xl font-bold text-white">4.2</span>
-                          <span className="text-xs text-gray-400 text-center">Avg Rating</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                          <span className="text-2xl font-bold text-white">1,039</span>
-                          <span className="text-xs text-gray-400 text-center">Total Reviews</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                          <span className="text-2xl font-bold text-white">23</span>
-                          <span className="text-xs text-gray-400 text-center">Photos</span>
-                        </div>
-                      </div>
-              </Card>
-                  </div>
-                </div>
-              </div>
+              <OverviewTab
+                currentLead={currentLead}
+                isTransitioning={isTransitioning}
+                animateOverview={animateOverview}
+                reviewsCardHeight={reviewsCardHeight}
+              />
             </TabsContent>
             
             <TabsContent value="local-business" className="flex-1">
-              <div className="h-full flex gap-4">
-                <div className="w-[40%] flex flex-col gap-4">
-                  <Card className={`h-[30%] p-4 overflow-auto transition-all duration-700 ease-out ${animateLocalBusiness ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    {gridData.length > 0 ? (
-                      <div className="space-y-4">
-                        <div>
-                          <div className="text-sm text-white mb-1">Avg. Rank</div>
-                          <div className="text-2xl font-bold text-white">
-                            {calculateAverageRank().toFixed(2)}
-                            <span className="text-sm text-green-400 ml-2">+0.22</span>
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <div className="text-sm font-semibold text-white mb-3">Rank decomposition</div>
-                          <div className="space-y-2">
-                            {(() => {
-                              const decomposition = calculateRankDecomposition()
-                              return (
-                                <>
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-white">Good:</span>
-                                    <div className="flex items-center gap-2 flex-1 ml-4">
-                                      <span className="text-white font-medium">{decomposition.good.toFixed(2)}%</span>
-                                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div 
-                                          className="h-full bg-green-500 rounded-full transition-all duration-1000 ease-out" 
-                                          style={{ width: animateRanks ? `${decomposition.good}%` : '0%' }}
-                                        ></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-white">Average:</span>
-                                    <div className="flex items-center gap-2 flex-1 ml-4">
-                                      <span className="text-white font-medium">{decomposition.average.toFixed(2)}%</span>
-                                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div 
-                                          className="h-full bg-yellow-500 rounded-full transition-all duration-1000 ease-out delay-200" 
-                                          style={{ width: animateRanks ? `${decomposition.average}%` : '0%' }}
-                                        ></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-white">Poor:</span>
-                                    <div className="flex items-center gap-2 flex-1 ml-4">
-                                      <span className="text-white font-medium">{decomposition.poor.toFixed(2)}%</span>
-                                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div 
-                                          className="h-full bg-orange-500 rounded-full transition-all duration-1000 ease-out delay-400" 
-                                          style={{ width: animateRanks ? `${decomposition.poor}%` : '0%' }}
-                                        ></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-white">Out Top 20:</span>
-                                    <div className="flex items-center gap-2 flex-1 ml-4">
-                                      <span className="text-white font-medium">{decomposition.outTop20.toFixed(2)}%</span>
-                                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div 
-                                          className="h-full bg-red-500 rounded-full transition-all duration-1000 ease-out delay-600" 
-                                          style={{ width: animateRanks ? `${decomposition.outTop20}%` : '0%' }}
-                                        ></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-white text-sm">Loading ranking data...</div>
-                    )}
-                  </Card>
-                  <Card className={`p-4 overflow-hidden transition-all duration-700 ease-out delay-200 ${animateLocalBusiness ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`} style={{ height: `${locationCardHeight}px` }}>
-                    <div className="h-full overflow-y-auto scrollbar-hide">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">2.6</div>
-                            <div>
-                              <div className="text-white font-medium">Exclusive Salon and Spa</div>
-                              <div className="text-gray-300 text-sm">58 Belladonna Boulevard</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★★☆</div>
-                                <span className="text-gray-400 text-xs">(1,803)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">5.8</div>
-                            <div>
-                              <div className="text-white font-medium">Beauty Queen Salon</div>
-                              <div className="text-gray-300 text-sm">61 West Grove Street</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★☆☆</div>
-                                <span className="text-gray-400 text-xs">(982)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-blue-500 bg-blue-900/20">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-blue-600 w-8 h-8 rounded-full flex items-center justify-center text-sm">9.2</div>
-                            <div>
-                              <div className="text-white font-medium">Robert Biskup Dentiste</div>
-                              <div className="text-gray-300 text-sm">123 Cakewalk Avenue</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★★☆</div>
-                                <span className="text-gray-400 text-xs">(1,039)</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-medium">
-                            You
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">11.6</div>
-                            <div>
-                              <div className="text-white font-medium">Mike's Hair & Beauty Palace</div>
-                              <div className="text-gray-300 text-sm">5 St Monica Street</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★★☆</div>
-                                <span className="text-gray-400 text-xs">(756)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">13.2</div>
-                            <div>
-                              <div className="text-white font-medium">West Island Dental Care</div>
-                              <div className="text-gray-300 text-sm">89 Pine Ridge Road</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★☆☆</div>
-                                <span className="text-gray-400 text-xs">(432)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">15.7</div>
-                            <div>
-                              <div className="text-white font-medium">Montreal Smile Clinic</div>
-                              <div className="text-gray-300 text-sm">42 Lakeshore Drive</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★★☆</div>
-                                <span className="text-gray-400 text-xs">(1,205)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-gray-600">
-                          <div className="flex items-center gap-3">
-                            <div className="text-lg font-bold text-white bg-gray-700 w-8 h-8 rounded-full flex items-center justify-center text-sm">18.4</div>
-                            <div>
-                              <div className="text-white font-medium">Perfect Teeth Dental</div>
-                              <div className="text-gray-300 text-sm">156 Maple Street</div>
-                              <div className="flex items-center gap-1 mt-1">
-                                <div className="flex text-yellow-400">★★★☆☆</div>
-                                <span className="text-gray-400 text-xs">(687)</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-                {mapError ? (
-                  <div className="w-[60%] h-full rounded-lg border flex items-center justify-center bg-gray-100">
-                    <div className="text-center p-4">
-                      <p className="text-red-600 mb-2">Map Error:</p>
-                      <p className="text-sm text-gray-600">{mapError}</p>
-                      {!mapboxgl.accessToken && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          Add your Mapbox token to .env.local file
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div 
-                    ref={mapContainer} 
-                    className="w-[60%] h-full rounded-lg border"
-                    style={{ minHeight: '400px' }}
-                  />
-                )}
-              </div>
+              <LocalBusinessTab
+                isTransitioning={isTransitioning}
+                animateRanks={animateRanks}
+                animateLocalBusiness={animateLocalBusiness}
+                locationCardHeight={locationCardHeight}
+                gridData={gridData}
+                activeTab={activeTab}
+                onGridDataUpdate={setGridData}
+              />
             </TabsContent>
             
             <TabsContent value="social-media" className="flex-1">
-              <div className="h-full flex gap-4">
-                <Card className={`flex-1 p-4 overflow-auto transition-all duration-700 ease-out ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                  <div className={`flex items-center gap-2 mb-4 transition-all duration-500 ease-out ${animateSocial ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
-                    <FaFacebook className="w-6 h-6 text-blue-500" />
-                    <h3 className="text-lg font-semibold text-white">Facebook</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className={`transition-all duration-600 ease-out delay-200 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                      <div className="text-lg text-white font-bold">Robert Biskup Dentiste West Island Dentist</div>
-                      <div className="text-sm text-blue-400">facebook.com/robertbiskupdentiste</div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-600 ease-out delay-400 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Followers</div>
-                        <div className="text-lg font-bold text-white">1,247</div>
-                      </div>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Last Post</div>
-                        <div className="text-lg font-bold text-white">3 days ago</div>
-                      </div>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Running Ads</div>
-                        <div className="text-lg font-bold text-green-400">Yes</div>
-                      </div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-700 ease-out delay-600 ${animateSocial ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <div className="h-64">
-                        <img src="/facebook1.jpg" alt="Facebook post" className="w-full h-full object-cover rounded" />
-                      </div>
-                      <div className="flex gap-2 h-26">
-                        <img src="/facebook2.jpg" alt="Facebook post" className="flex-1 object-cover rounded" />
-                        <img src="/facebook3.jpg" alt="Facebook post" className="flex-1 object-cover rounded" />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-                <Card className={`flex-1 p-4 overflow-auto transition-all duration-700 ease-out delay-100 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                  <div className={`flex items-center gap-2 mb-4 transition-all duration-500 ease-out delay-100 ${animateSocial ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
-                    <FaInstagram className="w-6 h-6 text-pink-500" />
-                    <h3 className="text-lg font-semibold text-white">Instagram</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className={`transition-all duration-600 ease-out delay-300 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                      <div className="text-lg text-white font-bold">Robert Biskup</div>
-                      <div className="text-sm text-pink-400">@robertbiskup</div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-600 ease-out delay-500 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Followers</div>
-                        <div className="text-lg font-bold text-white">892</div>
-                      </div>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Last Post</div>
-                        <div className="text-lg font-bold text-white">1 week ago</div>
-                      </div>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Running Ads</div>
-                        <div className="text-lg font-bold text-red-400">No</div>
-                      </div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-700 ease-out delay-700 ${animateSocial ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <div className="h-64">
-                        <img src="/instagram1.jpg" alt="Instagram post" className="w-full h-full object-cover rounded" />
-                      </div>
-                      <div className="flex gap-2 h-32">
-                        <img src="/instagram2.jpg" alt="Instagram post" className="flex-1 object-cover rounded" />
-                        <img src="/instagram3.jpg" alt="Instagram post" className="flex-1 object-cover rounded" />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-                <Card className={`flex-1 p-4 overflow-auto transition-all duration-700 ease-out delay-200 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                  <div className={`flex items-center gap-2 mb-4 transition-all duration-500 ease-out delay-200 ${animateSocial ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
-                    <FaGoogle className="w-6 h-6 text-blue-500" />
-                    <h3 className="text-lg font-semibold text-white">Google</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className={`transition-all duration-600 ease-out delay-400 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                      <div className="text-lg text-white font-bold">Robert Biskup Dentiste West Island Dentist</div>
-                      <div className="text-sm text-blue-400">business.google.com/robertbiskupdentiste</div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-600 ease-out delay-600 ${animateSocial ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Last Post</div>
-                        <div className="text-lg font-bold text-white">2 weeks ago</div>
-                      </div>
-                      <div className="bg-gray-800 rounded-lg p-3 text-center">
-                        <div className="text-sm text-gray-400">Running Ads</div>
-                        <div className="text-lg font-bold text-green-400">Yes</div>
-                      </div>
-                    </div>
-                    <div className={`space-y-2 transition-all duration-700 ease-out delay-800 ${animateSocial ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <div className="h-64">
-                        <img src="/google1.png" alt="Google Business post" className="w-full h-full object-cover rounded" />
-                      </div>
-                    </div>
-                  </div>
-              </Card>
-              </div>
+              <SocialMediaTab
+                currentLead={currentLead}
+                isTransitioning={isTransitioning}
+                animateSocial={animateSocial}
+              />
             </TabsContent>
             
             <TabsContent value="website" className="flex-1">
-              <div className="h-full flex gap-4">
-                <div className="w-[40%] flex flex-col gap-4">
-                  <Card className={`h-[40%] p-4 overflow-auto flex flex-col transition-all duration-700 ease-out ${animateWebsite ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    <h3 className="text-lg font-semibold mb-2 text-white">Page Speed</h3>
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="w-full h-24">
-                        <GaugeComponent
-                          type="semicircle"
-                          value={62}
-                          minValue={0}
-                          maxValue={100}
-                          marginInPercent={{ top: 0.05, bottom: 0.05, left: 0.15, right: 0.15 }}
-                          arc={{
-                            width: 0.15,
-                            padding: 0.005,
-                            cornerRadius: 1,
-                            subArcs: [
-                              {
-                                limit: 40,
-                                color: '#ef4444',
-                              },
-                              {
-                                limit: 70,
-                                color: '#f59e0b',
-                              },
-                              {
-                                color: '#22c55e',
-                              }
-                            ]
-                          }}
-                          pointer={{
-                            type: "arrow",
-                            color: '#ffffff',
-                            length: 0.75,
-                            width: 10,
-                          }}
-                          labels={{
-                            valueLabel: { 
-                              formatTextValue: () => '2.3s',
-                              style: {fontSize: '32px', fill: '#ffffff', textShadow: 'none', fontWeight: 'bold'}
-                            },
-                            tickLabels: {
-                              hideMinMax: true,
-                              ticks: []
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 border-t pt-4">
-                      <div className="flex justify-between items-center text-sm mb-2">
-                        <span className="text-gray-500">Technology:</span>
-                        <span className="font-medium text-white">WordPress</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm mb-2">
-                        <span className="text-gray-500">Mobile Friendly:</span>
-                        <span className="font-medium text-green-500">Yes</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-500">SSL Certificate:</span>
-                        <span className="font-medium text-green-500">Yes</span>
-                      </div>
-                    </div>
-                  </Card>
-                  <Card className={`h-[50%] p-4 overflow-auto transition-all duration-700 ease-out delay-200 ${animateWebsite ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    <div className={`flex gap-4 mb-4 transition-all duration-600 ease-out delay-400 ${animateWebsite ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <div className="flex-1 bg-red-900/20 border-2 border-red-500 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-red-400">12</div>
-                        <div className="text-xs text-red-300">Errors</div>
-                      </div>
-                      <div className="flex-1 bg-yellow-900/20 border-2 border-yellow-500 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-yellow-400">8</div>
-                        <div className="text-xs text-yellow-300">Warnings</div>
-                      </div>
-                      <div className="flex-1 bg-blue-900/20 border-2 border-blue-500 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-blue-400">23</div>
-                        <div className="text-xs text-blue-300">Notices</div>
-                      </div>
-                    </div>
-                    <div className={`transition-all duration-600 ease-out delay-600 ${animateWebsite ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                      <h4 className="text-sm font-semibold text-white mb-2">Top Issues:</h4>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center border-b border-gray-600 pb-1">
-                          <span className="text-xs text-gray-400 font-medium">Type of Issues</span>
-                          <span className="text-xs text-gray-400 font-medium">Number</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-gray-300">Incorrect pages found in sitemap.xml</span>
-                          <span className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded">errors</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-gray-300">Pages not found - 404</span>
-                          <span className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded">errors</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-gray-300">Duplicate content</span>
-                          <span className="text-xs text-yellow-400 bg-yellow-900/20 px-2 py-1 rounded">warns</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-gray-300">Missing title tags</span>
-                          <span className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded">errors</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-gray-300">Duplicate title tags</span>
-                          <span className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded">errors</span>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                  <Card className={`h-[10%] p-4 overflow-auto flex items-center justify-center transition-all duration-700 ease-out delay-400 ${animateWebsite ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    <div className={`flex gap-6 text-center transition-all duration-600 ease-out delay-800 ${animateWebsite ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <div className="flex flex-col items-center">
-                        <span className="text-xs text-gray-400">Live Chat</span>
-                        <span className="text-red-400 text-sm font-medium">✗</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-xs text-gray-400">Online Booking</span>
-                        <span className="text-green-400 text-sm font-medium">✓</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-xs text-gray-400">Online Shop</span>
-                        <span className="text-red-400 text-sm font-medium">✗</span>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-                <div className="w-[60%]">
-                  <Card className={`p-4 transition-all duration-700 ease-out delay-600 ${animateWebsite ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`} style={{ height: `${websiteCardHeight}px` }}>
-                    <ScrollArea className="h-full w-full">
-                      <img 
-                        src="/dentist_website.png" 
-                        alt="Dentist Website"
-                        className="w-full"
-                      />
-                    </ScrollArea>
-              </Card>
-                </div>
-              </div>
+              <WebsiteTab
+                currentLead={currentLead}
+                isTransitioning={isTransitioning}
+                animateWebsite={animateWebsite}
+                websiteCardHeight={websiteCardHeight}
+              />
             </TabsContent>
           </Tabs>
         </div>
         <div className="w-[30%] flex flex-col">
-          <Card className="flex-1 mb-4 flex flex-col relative overflow-hidden">
+          <div className="flex flex-col gap-2 mb-4">
+            <Popover open={callbackOpen} onOpenChange={setCallbackOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full flex items-center justify-center gap-2">
+                  <CalendarIcon className="h-4 w-4" />
+                  {callbackDate ? format(callbackDate, "PPP") : "Schedule Callback"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={callbackDate}
+                  onSelect={(date) => {
+                    setCallbackDate(date)
+                    setCallbackOpen(false)
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <Popover open={reminderOpen} onOpenChange={setReminderOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full flex items-center justify-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  {reminderDate ? format(reminderDate, "PPP") : "Set Reminder"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={reminderDate}
+                  onSelect={(date) => {
+                    setReminderDate(date)
+                    setReminderOpen(false)
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-full h-8 justify-center">
+                <div className="flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  <SelectValue placeholder="Add Status" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Hot Lead">Hot Lead</SelectItem>
+                <SelectItem value="Qualified">Qualified</SelectItem>
+                <SelectItem value="New Lead">New Lead</SelectItem>
+                <SelectItem value="Cold Lead">Cold Lead</SelectItem>
+                <SelectItem value="Not Interested">Not Interested</SelectItem>
+                <SelectItem value="no status">No Status</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Card className="mb-4 flex flex-col relative overflow-hidden" style={{ height: `${callInterfaceHeight}px` }}>
             {callState === "idle" ? (
               <div 
                 key="idle"
@@ -962,7 +577,7 @@ export default function DashboardCallPage() {
               >
                 <Button 
                   onClick={handleCallNow}
-                  className="w-full h-16 text-lg font-semibold transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mb-6"
+                  className="w-full h-16 text-lg font-semibold transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mb-6 mt-6"
                 >
                   <Phone className="h-6 w-6" />
                   Call Now
@@ -972,6 +587,17 @@ export default function DashboardCallPage() {
                   <h3 className="text-lg font-semibold mb-2">Notes</h3>
                   <p className="text-gray-500 text-sm">None so far</p>
                 </div>
+              </div>
+            ) : callState === "calling" ? (
+              <div 
+                key="calling"
+                className="flex flex-col items-center justify-center h-full transition-all duration-500 ease-in-out transform animate-in fade-in"
+              >
+                <div className="mb-4">
+                  <Phone className="h-12 w-12 text-blue-500 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">Calling...</h3>
+                <p className="text-gray-500 text-sm">{currentLead.phone}</p>
               </div>
             ) : callState === "in-call" ? (
               <div 
@@ -1003,43 +629,9 @@ export default function DashboardCallPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="flex-1 flex flex-col justify-end transition-all duration-300 ease-in-out">
+                <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
                   <ChatTranscript
-                    messages={[
-                      {
-                        role: "agent",
-                        name: "Sarah Miller",
-                        message:
-                          "Hi Dr. Biskup, this is Sarah from Digital Growth Solutions. I hope I'm not catching you at a bad time. I'm calling because I noticed your dental practice could benefit from improved online visibility.",
-                      },
-                      {
-                        role: "user",
-                        name: "Dr. Robert Biskup",
-                        message: "Oh, um, what exactly are you offering?",
-                      },
-                      {
-                        role: "agent",
-                        name: "Sarah Miller",
-                        message:
-                          "We specialize in SEO services specifically for dental practices. We can help you rank higher on Google when people search for 'dentist near me' or 'teeth whitening West Island'. Are you currently doing any digital marketing?",
-                      },
-                      {
-                        role: "user",
-                        name: "Dr. Robert Biskup",
-                        message: "Not really, just our basic website. How much does something like this cost?",
-                      },
-                      {
-                        role: "agent",
-                        name: "Sarah Miller",
-                        message:
-                          "Our dental SEO packages start at $1,200 per month, but I'd love to offer you a free website audit first. Would you be interested in seeing how your practice currently appears online?",
-                      },
-                      {
-                        role: "user",
-                        name: "Dr. Robert Biskup",
-                        message: "That's quite expensive. Let me think about it and discuss with my partner.",
-                      },
-                    ]}
+                    messages={displayedMessages}
                   />
                 </div>
               </div>
@@ -1077,7 +669,16 @@ export default function DashboardCallPage() {
               </div>
             )}
           </Card>
-          <Button className="w-full">Next</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 flex items-center justify-center gap-2" onClick={handleBack}>
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <Button className="flex-1 flex items-center justify-center gap-2" onClick={handleNext}>
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
   </>

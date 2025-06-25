@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { GalleryVerticalEnd } from "lucide-react"
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const [email, setEmail] = useState("")
@@ -50,12 +49,12 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
             <a href="#" className="flex flex-col items-center gap-2 font-medium">
-              <div className="flex size-8 items-center justify-center rounded-md">
-                <GalleryVerticalEnd className="size-6" />
+              <div className="flex size-12 items-center justify-center rounded-md">
+                <img src="/logo.png" alt="Kinteli Logo" className="size-10" />
               </div>
-              <span className="sr-only">Acme Inc.</span>
+              <span className="sr-only">Kinteli</span>
             </a>
-            <h1 className="text-xl font-bold">Welcome to Acme Inc.</h1>
+            <h1 className="text-xl font-bold">Welcome to Kinteli</h1>
             <div className="text-center text-sm">
               Don&apos;t have an account?{" "}
               <a href="#" className="underline underline-offset-4">
