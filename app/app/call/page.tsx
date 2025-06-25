@@ -1,12 +1,22 @@
 import AgentCall from "@/components/agent-call"
 import SEORankingDashboard from "@/components/SEORankingDashboard"
+import { SiteHeader } from "@/components/site-header"
 
 export default function DashboardCallPage() {
-  return (
+  return <>
+    
+    <SiteHeader title="Call" />
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Call</h1>
-      <AgentCall />
-      <SEORankingDashboard />
+      <div className="flex gap-6">
+
+        <div className="w-2/3">
+          <SEORankingDashboard />
+        </div>
+
+        <div className="w-1/3">
+          <AgentCall />
+        </div>
+      </div>
     </div>
-  )
+  </>
 }
