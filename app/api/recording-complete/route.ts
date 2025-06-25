@@ -1,6 +1,4 @@
 // File: app/api/recording-complete/route.ts
-// SIMPLE VERSION - Just transcribe and log to console
-
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
@@ -15,11 +13,10 @@ export async function POST(request: NextRequest) {
     console.log(`🎬 Recording completed for call: ${callSid}`);
     console.log(`📁 Recording URL: ${recordingUrl}`);
     
-    // Process recording immediately
-    processRecording(recordingUrl, callSid);
+    // Process the recording asynchronously
+    processRecording(recordingUrl, callSid).catch(console.error);
     
     return new NextResponse('OK', { status: 200 });
-    
   } catch (error) {
     console.error('❌ Error in recording webhook:', error);
     return new NextResponse('Error', { status: 500 });
@@ -30,7 +27,7 @@ async function processRecording(recordingUrl: string, callSid: string) {
   try {
     console.log('📥 Downloading recording...');
     
-    // Download recording from Twilio
+    // Download the recording from Twilio
     const response = await axios.get(recordingUrl, {
       responseType: 'arraybuffer',
       auth: {
@@ -41,7 +38,7 @@ async function processRecording(recordingUrl: string, callSid: string) {
     
     console.log('🎙️ Transcribing with Deepgram...');
     
-    // Send to Deepgram
+    // Send to Deepgram for transcription
     const transcriptResponse = await axios.post(
       'https://api.deepgram.com/v1/listen',
       response.data,
@@ -55,7 +52,8 @@ async function processRecording(recordingUrl: string, callSid: string) {
           language: 'en-US',
           punctuate: true,
           smart_format: true,
-          diarize: true
+          diarize: true,  // Separates different speakers
+          paragraphs: true
         }
       }
     );
@@ -65,9 +63,9 @@ async function processRecording(recordingUrl: string, callSid: string) {
     if (results.channels && results.channels[0].alternatives) {
       const transcript = results.channels[0].alternatives[0];
       
-      console.log('\n📝 === RECORDING TRANSCRIPT (BOTH PARTIES) ===');
+      console.log('\n📝 === FULL CONVERSATION TRANSCRIPT ===');
       
-      // Show speakers if diarization worked
+      // If speaker diarization worked, show speakers separately
       if (transcript.paragraphs && transcript.paragraphs.paragraphs) {
         transcript.paragraphs.paragraphs.forEach((paragraph: any) => {
           paragraph.sentences.forEach((sentence: any) => {
@@ -76,11 +74,11 @@ async function processRecording(recordingUrl: string, callSid: string) {
           });
         });
       } else {
-        // Fallback without speaker separation
+        // Fallback: show full transcript without speaker separation
         console.log(`[BOTH PARTIES]: ${transcript.transcript}`);
       }
       
-      console.log('===============================================\n');
+      console.log('===========================================\n');
     }
     
   } catch (error) {
