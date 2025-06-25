@@ -557,8 +557,8 @@ export default function DashboardCallPage() {
   const handleCallNow = () => {
     setCallState("calling")
     
-    // Initiate call through TwiML endpoint
-    fetch('/api/twiml', {
+    // Initiate call through the dedicated call initiation endpoint
+    fetch('/api/initiate-call', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

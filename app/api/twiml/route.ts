@@ -21,36 +21,45 @@ function generateTwiMLWithRecording(to: string, callerId: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const to = body.to || '+15145703486'; // Use provided number or default
+    console.log('Twilio requesting TwiML');
+    
+    // Get the phone number from form data
+    let to = '+15145703486'; // default
+    
+    try {
+      const formData = await request.formData();
+      const toParam = formData.get('To');
+      if (toParam) {
+        to = toParam.toString();
+      }
+    } catch (e) {
+      console.log('Using default phone number for Twilio request');
+    }
+    
     const callerId = '+19786503903';
-
     const xml = generateTwiMLWithRecording(to, callerId);
-
-    // For now, we'll return a placeholder callSid
-    // In a real implementation, you'd need to get the actual callSid from Twilio
-    // This could be done by setting up a webhook or using Twilio's API
-    const callSid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    return NextResponse.json({
-      success: true,
-      callSid: callSid,
-      twiml: xml
-    }, {
+    
+    console.log('Generated TwiML for call to:', to);
+    
+    return new NextResponse(xml, {
       status: 200,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/xml',
       },
     });
   } catch (error) {
     console.error('Error in TwiML endpoint:', error);
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to generate TwiML'
-    }, {
-      status: 500,
+    
+    // Return XML error for Twilio
+    const errorXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>An error occurred while processing your request.</Say>
+</Response>`;
+    
+    return new NextResponse(errorXml, {
+      status: 200, // Twilio expects 200 even for errors
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/xml',
       },
     });
   }
