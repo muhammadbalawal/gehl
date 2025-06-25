@@ -131,7 +131,10 @@ export default function DashboardCallPage() {
 // Twilio device
   const deviceRef = useRef<Device | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const [callSid, setCallSid] = useState<string | null>(null);
+  const [localCallSid, setLocalCallSid] = useState<string | null>(null);
+  
+  // Use the useCallSid hook to get call SID from WebSocket server
+  const callSid = useCallSid();
   
 
   // Trigger overview animations when tab becomes active
@@ -198,17 +201,13 @@ export default function DashboardCallPage() {
       device.on('error', (err) => console.error('Twilio error:', err));
       device.on('connect', (call) => {
         console.log('Call connected:', call.parameters.CallSid);
-        // setCallSid(call.parameters.CallSid);
-
-        // const callSid = useCallSid();
-        setCallSid(useCallSid()); 
-
+        setLocalCallSid(call.parameters.CallSid);
         setCallState("in-call");
       });
       device.on('disconnect', () => {
         console.log('Call disconnected');
         setCallState("post-call");
-        setCallSid(null);
+        setLocalCallSid(null);
       });
     };
 
