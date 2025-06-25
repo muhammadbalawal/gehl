@@ -305,15 +305,8 @@ export default function DashboardCallPage() {
   // Function to convert database transcript to Message format
   const convertTranscriptToMessage = (transcript: TranscriptRow): Message => {
     // Map speaker to role and name
-    // Check for various agent indicators
-    const speakerLower = transcript.speaker.toLowerCase()
-    const isAgent = speakerLower.includes('agent') || 
-                   speakerLower.includes('sarah') ||
-                   speakerLower.includes('ai') ||
-                   speakerLower.includes('assistant') ||
-                   speakerLower.includes('bot') ||
-                   speakerLower === 'agent' ||
-                   speakerLower === '0' // Sometimes speaker 0 is the agent
+    // CALLER = You (the agent), CALLEE = The customer being called
+    const isAgent = transcript.speaker === 'CALLER'
     
     return {
       role: isAgent ? 'agent' : 'user',
