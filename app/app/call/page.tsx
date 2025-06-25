@@ -28,11 +28,19 @@ import { WebsiteTab } from "@/components/call-tabs/website-tab"
 import { Lead } from "@/components/call-tabs/types"
 import { Device } from '@twilio/voice-sdk';
 
-
 interface Message {
   role: 'agent' | 'user';
   name: string;
   message: string;
+  timestamp?: Date;
+  isLive?: boolean;
+}
+
+interface LiveTranscript {
+  speaker: 'CALLER' | 'CALLEE';
+  transcript: string;
+  isFinal: boolean;
+  timestamp: Date;
 }
 
 // Lead data
@@ -118,12 +126,125 @@ export default function DashboardCallPage() {
   const [time, setTime] = useState(0)
   const [activeTab, setActiveTab] = useState("lead-overview")
 
-
-// Twilio device
+  // Twilio device
   const deviceRef = useRef<Device | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [callSid, setCallSid] = useState<string | null>(null);
-  
+
+  // Transcript messages
+  const [liveTranscripts, setLiveTranscripts] = useState<LiveTranscript[]>([])
+  const [transcriptWs, setTranscriptWs] = useState<WebSocket | null>(null)
+  const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
+
+  // Handle live transcript WebSocket connection
+  useEffect(() => {
+    if (callState === "in-call" && callSid) {
+      console.log('Setting up transcript WebSocket for call:', callSid)
+      
+      // Connect to your transcript WebSocket server
+      const ws = new WebSocket('wss://server-wb.onrender.com/transcript')
+
+      ws.onopen = () => {
+        console.log('Connected to transcript WebSocket')
+        // Send call SID to identify this call
+        ws.send(JSON.stringify({
+          type: 'register',
+          callSid: callSid
+        }))
+      }
+
+      ws.onmessage = (event) => {
+        console.log('Received transcript message:', event.data)
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === 'transcript') {
+            const newTranscript: LiveTranscript = {
+              speaker: data.speaker, // 'CALLER' or 'CALLEE'
+              transcript: data.transcript,
+              isFinal: data.isFinal,
+              timestamp: new Date()
+            }
+
+            console.log('Processing transcript:', newTranscript)
+
+            setLiveTranscripts(prev => {
+              // If it's a final transcript, replace any interim version
+              if (newTranscript.isFinal) {
+                const filtered = prev.filter(t =>
+                  !(t.speaker === newTranscript.speaker && !t.isFinal)
+                )
+                return [...filtered, newTranscript]
+              } else {
+                // Replace any existing interim transcript from same speaker
+                const filtered = prev.filter(t =>
+                  !(t.speaker === newTranscript.speaker && !t.isFinal)
+                )
+                return [...filtered, newTranscript]
+              }
+            })
+          }
+
+          if (data.type === 'registered') {
+            console.log('Successfully registered for call:', data.callSid)
+          }
+
+          if (data.type === 'call_ended') {
+            console.log('Call ended notification received')
+          }
+
+        } catch (err) {
+          console.error('Failed to parse transcript message:', err)
+        }
+      }
+
+      ws.onclose = () => {
+        console.log('Transcript WebSocket disconnected')
+      }
+
+      ws.onerror = (err) => {
+        console.error('Transcript WebSocket error:', err)
+      }
+
+      setTranscriptWs(ws)
+
+      return () => {
+        console.log('Cleaning up transcript WebSocket')
+        ws.close()
+      }
+    }
+  }, [callState, callSid])
+
+  // Convert live transcripts to displayable messages
+  useEffect(() => {
+    const messages: Message[] = liveTranscripts
+      .filter(t => t.isFinal) // Only show final transcripts
+      .map(transcript => ({
+        role: transcript.speaker === 'CALLER' ? 'user' : 'agent',
+        name: transcript.speaker === 'CALLER' ? 'Dr. Robert Biskup' : 'Sarah Miller',
+        message: transcript.transcript,
+        timestamp: transcript.timestamp,
+        isLive: true
+      }))
+
+    console.log('Updated displayed messages:', messages)
+    setDisplayedMessages(messages)
+  }, [liveTranscripts])
+
+  // Timer functionality for call duration
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (callState === "in-call") {
+      interval = setInterval(() => {
+        setTime((prevTime) => prevTime + 1)
+      }, 1000)
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [callState])
 
   // Trigger overview animations when tab becomes active
   useEffect(() => {
@@ -176,34 +297,34 @@ export default function DashboardCallPage() {
     }
   }, [activeTab])
 
-
   // Twilio device setup
   useEffect(() => {
     const init = async () => {
-      const res = await fetch('/api/token');
-      const { token } = await res.json();
-      const device = new Device(token);
-      deviceRef.current = device;
+      try {
+        const res = await fetch('/api/token');
+        const { token } = await res.json();
+        const device = new Device(token);
+        deviceRef.current = device;
 
-      device.on('ready', () => console.log('Ready to call'));
-      device.on('error', (err) => console.error('Twilio error:', err));
-      device.on('connect', (call) => {
-        console.log('Call connected:', call.parameters.CallSid);
-        setCallSid(call.parameters.CallSid);
-        setCallState("in-call");
-      });
-      device.on('disconnect', () => {
-        console.log('Call disconnected');
-        setCallState("post-call");
-        setCallSid(null);
-      });
+        device.on('ready', () => console.log('Twilio Device ready to call'));
+        device.on('error', (err) => console.error('Twilio device error:', err));
+        device.on('connect', (call) => {
+          console.log('Call connected:', call.parameters.CallSid);
+          setCallSid(call.parameters.CallSid);
+          setCallState("in-call");
+        });
+        device.on('disconnect', () => {
+          console.log('Call disconnected');
+          setCallState("post-call");
+          setCallSid(null);
+        });
+      } catch (err) {
+        console.error('Failed to initialize Twilio device:', err);
+      }
     };
 
     init();
   }, []);
-
-
-
 
   const [gridData, setGridData] = useState<number[]>([])
   const [locationCardHeight, setLocationCardHeight] = useState(450)
@@ -215,44 +336,6 @@ export default function DashboardCallPage() {
   const [animateLocalBusiness, setAnimateLocalBusiness] = useState(false)
   const [animateWebsite, setAnimateWebsite] = useState(false)
   const [animateOverview, setAnimateOverview] = useState(false)
-
-  const transcriptMessages: Message[] = [
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Hi Dr. Biskup, this is Sarah from Digital Growth Solutions. I hope I'm not catching you at a bad time. I'm calling because I noticed your dental practice could benefit from improved online visibility.",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Oh, um, what exactly are you offering?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "We specialize in SEO services specifically for dental practices. We can help you rank higher on Google when people search for 'dentist near me' or 'teeth whitening West Island'. Are you currently doing any digital marketing?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Not really, just our basic website. How much does something like this cost?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Our dental SEO packages start at $1,200 per month, but I'd love to offer you a free website audit first. Would you be interested in seeing how your practice currently appears online?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "That's quite expensive. Let me think about it and discuss with my partner.",
-    },
-  ]
-
-  const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
 
   // Popover states
   const [callbackDate, setCallbackDate] = useState<Date>()
@@ -314,40 +397,6 @@ export default function DashboardCallPage() {
     return () => window.removeEventListener('resize', updateCardHeights)
   }, [])
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-    if (callState === "in-call") {
-      interval = setInterval(() => {
-        setTime((prevTime) => prevTime + 1)
-      }, 1000)
-    }
-    return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
-    }
-  }, [callState])
-
-  useEffect(() => {
-    if (callState === "in-call") {
-      setDisplayedMessages([]) // Clear previous messages
-      const timeouts: NodeJS.Timeout[] = []
-
-      transcriptMessages.forEach((message, index) => {
-        const timeout = setTimeout(() => {
-          setDisplayedMessages(prev => [...prev, message])
-        }, (index + 1) * 4000) // 4 second delay between messages
-        timeouts.push(timeout)
-      })
-
-      return () => {
-        timeouts.forEach(clearTimeout)
-      }
-    }
-  }, [callState])
-
-
-
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -357,26 +406,48 @@ export default function DashboardCallPage() {
   }
 
   const handleCallNow = () => {
+    console.log('Starting call...')
     setCallState("calling")
+    setLiveTranscripts([]) // Clear previous transcripts
+    setDisplayedMessages([]) // Clear previous messages
+    setTime(0) // Reset timer
+
     // After 3 seconds, transition to in-call state
     setTimeout(() => {
       setCallState("in-call")
     }, 3000)
 
     // Connect the Twilio device
-    deviceRef.current?.connect();
+    try {
+      deviceRef.current?.connect();
+    } catch (err) {
+      console.error('Failed to connect call:', err)
+    }
   }
 
   const handleHangUp = () => {
+    console.log('Hanging up call...')
     setCallState("post-call")
 
+    // Close transcript WebSocket
+    if (transcriptWs) {
+      transcriptWs.close()
+      setTranscriptWs(null)
+    }
+
     // Disconnect the Twilio device
-    deviceRef.current?.disconnectAll();
+    try {
+      deviceRef.current?.disconnectAll();
+    } catch (err) {
+      console.error('Failed to disconnect call:', err)
+    }
   }
 
   const handleNewCall = () => {
     setTime(0)
     setCallState("idle")
+    setLiveTranscripts([])
+    setDisplayedMessages([])
   }
 
   const addGridLayer = (mapInstance: mapboxgl.Map) => {
@@ -500,7 +571,6 @@ export default function DashboardCallPage() {
   }
 
   return <>
-
     <SiteHeader title="Call" />
     <div className="flex flex-row gap-4 p-4 flex-1 min-h-0">
       <div className="w-[70%] flex flex-col">
@@ -694,10 +764,10 @@ export default function DashboardCallPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCallState("idle")}
+                  onClick={handleNewCall}
                   className="transition-all duration-200 hover:scale-105"
                 >
-                  Back to Call
+                  New Call
                 </Button>
               </div>
 

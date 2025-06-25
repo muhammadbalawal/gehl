@@ -26,37 +26,6 @@ export default function CallCard() {
   const [liveTranscript, setLiveTranscript] = useState<TranscriptMessage[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
-  const messages = [
-    {
-      id: 1,
-      speaker: "Sofia Davis",
-      email: "me@example.com",
-      content: "Hi, how can I help you today?",
-      isAgent: true,
-      timestamp: "00:00"
-    },
-    {
-      id: 2,
-      speaker: "Customer",
-      content: "Hey, I'm having trouble with my account.",
-      isAgent: false,
-      timestamp: "00:05"
-    },
-    {
-      id: 3,
-      speaker: "Sofia Davis",
-      content: "What seems to be the problem?",
-      isAgent: true,
-      timestamp: "00:08"
-    },
-    {
-      id: 4,
-      speaker: "Customer",
-      content: "I can't log in.",
-      isAgent: false,
-      timestamp: "00:12"
-    }
-  ];
 
   useEffect(() => {
     const init = async () => {
@@ -77,12 +46,21 @@ export default function CallCard() {
         console.log('Call disconnected');
         setIsCalling(false);
         setCallSid(null);
-        disconnectFromTranscription();
       });
     };
 
     init();
   }, []);
+
+  const callClient = () => {
+    deviceRef.current?.connect();
+  };
+
+  const hangUp = () => {
+    deviceRef.current?.disconnectAll();
+  };
+
+
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -102,7 +80,7 @@ export default function CallCard() {
   const connectToTranscription = (sid: string) => {
     const websocketUrl = 'wss://server-wb.onrender.com';
     const ws = new WebSocket(`${websocketUrl}/audio-stream?callSid=${sid}`);
-    
+
     ws.onopen = () => {
       console.log('🔌 Connected to transcription service');
       setIsTranscribing(true);
@@ -116,7 +94,7 @@ export default function CallCard() {
             ...data.data,
             isInterim: data.type === 'interim'
           };
-          
+
           setLiveTranscript(prev => {
             if (data.type === 'interim') {
               // Replace the last interim message or add new one
@@ -162,20 +140,13 @@ export default function CallCard() {
     return `${mins}:${secs}`;
   };
 
-  const callClient = () => {
-    deviceRef.current?.connect();
-  };
-
-  const hangUp = () => {
-    deviceRef.current?.disconnectAll();
-  };
 
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      minute: '2-digit', 
-      second: '2-digit' 
+    return date.toLocaleTimeString('en-US', {
+      hour12: false,
+      minute: '2-digit',
+      second: '2-digit'
     });
   };
 
@@ -264,7 +235,7 @@ export default function CallCard() {
         {isCalling && liveTranscript.length > 0 && (
           <>
             <Separator className="bg-zinc-700" />
-            
+
             <div className="space-y-2 -mb-6">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium text-zinc-300">Live Transcription</h4>
@@ -297,11 +268,10 @@ export default function CallCard() {
                             </Badge>
                           )}
                         </div>
-                        <div className={`backdrop-blur-sm rounded-2xl rounded-tl-md px-4 py-3 max-w-[85%] text-sm shadow-sm border ${
-                          message.isInterim 
-                            ? 'bg-yellow-900/20 text-yellow-200 border-yellow-600/30' 
+                        <div className={`backdrop-blur-sm rounded-2xl rounded-tl-md px-4 py-3 max-w-[85%] text-sm shadow-sm border ${message.isInterim
+                            ? 'bg-yellow-900/20 text-yellow-200 border-yellow-600/30'
                             : 'bg-zinc-700/80 text-zinc-100 border-zinc-600/30'
-                        }`}>
+                          }`}>
                           {message.transcript}
                           {message.isInterim && (
                             <span className="inline-block w-2 h-4 bg-yellow-400 ml-1 animate-pulse"></span>
