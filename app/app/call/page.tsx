@@ -27,6 +27,7 @@ import { SocialMediaTab } from "@/components/call-tabs/social-media-tab"
 import { WebsiteTab } from "@/components/call-tabs/website-tab"
 import { Lead } from "@/components/call-tabs/types"
 import { Device } from '@twilio/voice-sdk';
+import { supabase } from "@/lib/supabaseClient";
 
 
 interface Message {
@@ -218,42 +219,6 @@ export default function DashboardCallPage() {
   const [animateWebsite, setAnimateWebsite] = useState(false)
   const [animateOverview, setAnimateOverview] = useState(false)
 
-  const transcriptMessages: Message[] = [
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Hi Dr. Biskup, this is Sarah from Digital Growth Solutions. I hope I'm not catching you at a bad time. I'm calling because I noticed your dental practice could benefit from improved online visibility.",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Oh, um, what exactly are you offering?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "We specialize in SEO services specifically for dental practices. We can help you rank higher on Google when people search for 'dentist near me' or 'teeth whitening West Island'. Are you currently doing any digital marketing?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "Not really, just our basic website. How much does something like this cost?",
-    },
-    {
-      role: "agent",
-      name: "Sarah Miller",
-      message:
-        "Our dental SEO packages start at $1,200 per month, but I'd love to offer you a free website audit first. Would you be interested in seeing how your practice currently appears online?",
-    },
-    {
-      role: "user",
-      name: "Dr. Robert Biskup",
-      message: "That's quite expensive. Let me think about it and discuss with my partner.",
-    },
-  ]
-
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
 
   // Popover states
@@ -330,23 +295,72 @@ export default function DashboardCallPage() {
     }
   }, [callState])
 
+  // Subscribe to live transcript from Supabase
   useEffect(() => {
-    if (callState === "in-call") {
-      setDisplayedMessages([]) // Clear previous messages
-      const timeouts: NodeJS.Timeout[] = []
-
-      transcriptMessages.forEach((message, index) => {
-        const timeout = setTimeout(() => {
-          setDisplayedMessages(prev => [...prev, message])
-        }, (index + 1) * 4000) // 4 second delay between messages
-        timeouts.push(timeout)
-      })
-
-      return () => {
-        timeouts.forEach(clearTimeout)
-      }
+    if (!callSid) {
+      setDisplayedMessages([])
+      return
     }
-  }, [callState])
+
+    let isMounted = true;
+
+    // Helper to map Supabase row to Message
+    const mapRowToMessage = (row: any): Message => {
+      // Only handle 'CALLER' and 'CALLEE'
+      let role: 'agent' | 'user';
+      let name: string;
+      if (row.speaker === 'CALLER') {
+        role = 'agent';
+        name = 'Agent';
+      } else if (row.speaker === 'CALLEE') {
+        role = 'user';
+        name = 'Callee';
+      } else {
+        // fallback for unexpected values
+        role = 'user';
+        name = row.speaker || 'Unknown';
+      }
+      return {
+        role,
+        name,
+        message: row.transcript,
+      };
+    };
+
+    // Initial fetch
+    supabase
+      .from('transcriptions')
+      .select('*')
+      .eq('call_sid', callSid)
+      .order('timestamp', { ascending: true })
+      .then(({ data }) => {
+        if (isMounted && data) {
+          setDisplayedMessages(data.map(mapRowToMessage));
+        }
+      });
+
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel('transcriptions-live-' + callSid)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transcriptions',
+          filter: `call_sid=eq.${callSid}`,
+        },
+        (payload) => {
+          setDisplayedMessages((prev) => [...prev, mapRowToMessage(payload.new)]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [callSid]);
 
 
 
