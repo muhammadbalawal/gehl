@@ -28,6 +28,7 @@ import { WebsiteTab } from "@/components/call-tabs/website-tab"
 import { Lead } from "@/components/call-tabs/types"
 import { Device } from '@twilio/voice-sdk'
 import { supabase } from "@/lib/supabaseClient"
+import { useCallSid } from '@/hooks/useCallSid';
 
 interface Message {
   role: 'agent' | 'user';
@@ -197,7 +198,11 @@ export default function DashboardCallPage() {
       device.on('error', (err) => console.error('Twilio error:', err));
       device.on('connect', (call) => {
         console.log('Call connected:', call.parameters.CallSid);
-        setCallSid(call.parameters.CallSid);
+        // setCallSid(call.parameters.CallSid);
+
+        // const callSid = useCallSid();
+        setCallSid(useCallSid()); 
+
         setCallState("in-call");
       });
       device.on('disconnect', () => {
