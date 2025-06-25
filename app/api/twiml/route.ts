@@ -6,6 +6,9 @@ function generateTwiMLWithRecording(to: string, callerId: string) {
   <Start>
     <Stream url="wss://server-wb.onrender.com" track="outbound_track" />
   </Start>
+  <Start>
+    <Stream url="wss://server-wb.onrender.com" track="inbound_track" />
+  </Start>
   <Dial 
     callerId="${callerId}"
   >
