@@ -243,6 +243,7 @@ export default function DashboardCallPage() {
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
+  const [isPollingMode, setIsPollingMode] = useState(false)
 
   // Popover states
   const [callbackDate, setCallbackDate] = useState<Date>()
@@ -387,57 +388,104 @@ export default function DashboardCallPage() {
       // Load existing transcripts first
       loadExistingTranscripts(activeCallSid)
 
-      // Set up realtime subscription
-      const subscription = supabase
-        .channel('transcriptions')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'transcriptions',
-            filter: `call_sid=eq.${activeCallSid}`
-          },
-          (payload) => {
-            console.log('New transcript received:', payload)
-            try {
-              const newTranscript = payload.new as TranscriptRow
-              const newMessage = convertTranscriptToMessage(newTranscript)
-              setDisplayedMessages(prev => [...prev, newMessage])
-              setTranscriptError(null) // Clear any previous errors
-            } catch (error) {
-              console.error('Error processing new transcript:', error)
-              setTranscriptError('Error processing new transcript')
-            }
-          }
-        )
-        .subscribe((status) => {
-          console.log('📡 Supabase subscription status:', status)
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Successfully subscribed to transcriptions for call:', activeCallSid)
-            setTranscriptError(null) // Clear any previous errors
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ Error subscribing to transcriptions channel')
-            setTranscriptError('Failed to connect to live transcriptions')
-          } else if (status === 'TIMED_OUT') {
-            console.error('⏰ Subscription timed out')
-            setTranscriptError('Subscription timed out - retrying...')
-          } else if (status === 'CLOSED') {
-            console.log('🔴 Subscription closed')
-          } else {
-            console.log('ℹ️ Subscription status:', status)
-          }
-        })
+      // Set up realtime subscription with error handling
+      let subscription: any = null;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      const setupSubscription = () => {
+        try {
+          console.log(`📡 Attempting to set up Supabase realtime subscription (attempt ${retryCount + 1}/${maxRetries})`);
+          
+          subscription = supabase
+            .channel('transcriptions')
+            .on(
+              'postgres_changes',
+              {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'transcriptions',
+                filter: `call_sid=eq.${activeCallSid}`
+              },
+              (payload) => {
+                console.log('New transcript received:', payload)
+                try {
+                  const newTranscript = payload.new as TranscriptRow
+                  const newMessage = convertTranscriptToMessage(newTranscript)
+                  setDisplayedMessages(prev => [...prev, newMessage])
+                  setTranscriptError(null) // Clear any previous errors
+                } catch (error) {
+                  console.error('Error processing new transcript:', error)
+                  setTranscriptError('Error processing new transcript')
+                }
+              }
+            )
+            .subscribe((status) => {
+              console.log('📡 Supabase subscription status:', status)
+              if (status === 'SUBSCRIBED') {
+                console.log('✅ Successfully subscribed to transcriptions for call:', activeCallSid)
+                setTranscriptError(null) // Clear any previous errors
+                retryCount = 0; // Reset retry count on success
+              } else if (status === 'CHANNEL_ERROR') {
+                console.error('❌ Error subscribing to transcriptions channel')
+                retryCount++;
+                
+                if (retryCount < maxRetries) {
+                  console.log(`🔄 Retrying subscription in 2 seconds... (${retryCount}/${maxRetries})`)
+                  setTimeout(() => {
+                    if (subscription) {
+                      supabase.removeChannel(subscription)
+                    }
+                    setupSubscription();
+                  }, 2000);
+                } else {
+                  console.warn('⚠️ Max retries reached, falling back to polling mode')
+                  setTranscriptError('Realtime unavailable - using polling mode')
+                  setIsPollingMode(true)
+                  // Fall back to polling every 5 seconds
+                  const pollInterval = setInterval(() => {
+                    if (callState === "in-call" && activeCallSid) {
+                      loadExistingTranscripts(activeCallSid);
+                    } else {
+                      clearInterval(pollInterval);
+                    }
+                  }, 5000);
+                  
+                  // Clean up polling when component unmounts or call ends
+                  return () => {
+                    clearInterval(pollInterval);
+                    setIsPollingMode(false);
+                  }
+                }
+              } else if (status === 'TIMED_OUT') {
+                console.error('⏰ Subscription timed out')
+                setTranscriptError('Subscription timed out - retrying...')
+              } else if (status === 'CLOSED') {
+                console.log('🔴 Subscription closed')
+              } else {
+                console.log('ℹ️ Subscription status:', status)
+              }
+            })
+        } catch (error) {
+          console.error('❌ Error setting up subscription:', error)
+          setTranscriptError('Failed to set up realtime connection')
+        }
+      };
+
+      setupSubscription();
 
       return () => {
         console.log('🧹 Cleaning up transcript subscription')
-        supabase.removeChannel(subscription)
+        if (subscription) {
+          supabase.removeChannel(subscription)
+        }
       }
     } else if (callState !== "in-call") {
       // Clear messages and errors when not in call
       console.log('📭 Clearing transcripts - not in call')
       setDisplayedMessages([])
       setTranscriptError(null)
+      setIsPollingMode(false)
     }
   }, [callState, activeCallSid])
 
@@ -489,10 +537,30 @@ export default function DashboardCallPage() {
       const callSidData = await callSidResponse.json();
       console.log('📞 Call SID test result:', callSidData);
       
-      alert(`Server test: ${serverData.success ? '✅' : '❌'}\nCall SID: ${callSidData.callSid || 'none'}`);
+      // Test Supabase connection
+      const supabaseResponse = await fetch('/api/test-supabase');
+      const supabaseData = await supabaseResponse.json();
+      console.log('🗄️ Supabase test result:', supabaseData);
+      
+      const results = [
+        `Server: ${serverData.success ? '✅' : '❌'}`,
+        `Call SID: ${callSidData.callSid || 'none'}`,
+        `Supabase: ${supabaseData.success ? '✅' : '❌'}`,
+        `Realtime: ${supabaseData.realtime || 'unknown'}`
+      ].join('\n');
+      
+      alert(results);
     } catch (error) {
       console.error('❌ Test failed:', error);
       alert('Test failed: ' + error);
+    }
+  }
+
+  // Manual refresh function for transcripts
+  const refreshTranscripts = async () => {
+    if (activeCallSid) {
+      console.log('🔄 Manually refreshing transcripts...');
+      await loadExistingTranscripts(activeCallSid);
     }
   }
 
@@ -805,6 +873,7 @@ export default function DashboardCallPage() {
                 <div>Local Call SID: {localCallSid || 'none'}</div>
                 <div>WebSocket Call SID: {callSid || 'none'}</div>
                 <div>Active Call SID: {activeCallSid || 'none'}</div>
+                <div>Transcript Mode: {isPollingMode ? '🔄 Polling' : '⚡ Realtime'}</div>
               </div>
 
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
@@ -822,15 +891,23 @@ export default function DashboardCallPage() {
                         <span className="text-red-600 text-lg">!</span>
                       </div>
                       <p className="text-sm text-red-600 mb-2">Error loading transcripts</p>
-                      <p className="text-xs text-gray-400">{transcriptError}</p>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={() => activeCallSid && loadExistingTranscripts(activeCallSid)}
-                      >
-                        Retry
-                      </Button>
+                      <p className="text-xs text-gray-400 mb-3">{transcriptError}</p>
+                      <div className="flex gap-2 justify-center">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => activeCallSid && loadExistingTranscripts(activeCallSid)}
+                        >
+                          Retry
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={refreshTranscripts}
+                        >
+                          Refresh
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : displayedMessages.length === 0 ? (
@@ -839,6 +916,9 @@ export default function DashboardCallPage() {
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
                       <p className="text-xs text-gray-400 mt-1">Call SID: {activeCallSid}</p>
+                      {isPollingMode && (
+                        <p className="text-xs text-blue-500 mt-1">🔄 Polling for new transcripts</p>
+                      )}
                     </div>
                   </div>
                 ) : (
