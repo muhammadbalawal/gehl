@@ -34,6 +34,7 @@ interface Message {
   role: 'agent' | 'user';
   name: string;
   message: string;
+  timestamp: string;
 }
 
 interface TranscriptRow {
@@ -242,9 +243,11 @@ export default function DashboardCallPage() {
 
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
+  const [isLoadingNewTranscripts, setIsLoadingNewTranscripts] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [isPollingMode, setIsPollingMode] = useState(false)
   const [isSubscriptionActive, setIsSubscriptionActive] = useState(false)
+  const [lastPollTime, setLastPollTime] = useState<number>(0)
 
   // Popover states
   const [callbackDate, setCallbackDate] = useState<Date>()
@@ -329,7 +332,8 @@ export default function DashboardCallPage() {
     return {
       role: isAgent ? 'agent' : 'user',
       name: isAgent ? 'Sarah Miller' : currentLead.name.split(' ')[0] || 'Customer',
-      message: transcript.transcript
+      message: transcript.transcript,
+      timestamp: transcript.timestamp
     }
   }
 
@@ -380,6 +384,59 @@ export default function DashboardCallPage() {
       setTranscriptError('Failed to load transcripts')
     } finally {
       setIsLoadingTranscripts(false)
+    }
+  }
+
+  // Load only new transcripts (for polling mode)
+  const loadNewTranscripts = async (currentCallSid: string) => {
+    if (!currentCallSid) return
+
+    // Prevent polling too frequently (minimum 3 seconds between polls)
+    const now = Date.now();
+    if (now - lastPollTime < 3000) {
+      console.log('⏰ Skipping poll - too soon since last poll');
+      return;
+    }
+    setLastPollTime(now);
+
+    setIsLoadingNewTranscripts(true);
+    try {
+      console.log('🔄 Polling for new transcripts...')
+      
+      // Get the latest timestamp from existing messages
+      const latestTimestamp = displayedMessages.length > 0 
+        ? displayedMessages[displayedMessages.length - 1].timestamp 
+        : null;
+      
+      let query = supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('call_sid', currentCallSid)
+        .order('timestamp', { ascending: true });
+      
+      // If we have existing messages, only get newer ones
+      if (latestTimestamp) {
+        query = query.gt('timestamp', latestTimestamp);
+      }
+      
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error loading new transcripts:', error)
+        return
+      }
+
+      if (data && data.length > 0) {
+        console.log('Found new transcripts:', data.length, 'messages')
+        const newMessages = data.map(convertTranscriptToMessage)
+        setDisplayedMessages(prev => [...prev, ...newMessages])
+        // Clear any error state when new transcripts arrive
+        setTranscriptError(null)
+      }
+    } catch (error) {
+      console.error('Error loading new transcripts:', error)
+    } finally {
+      setIsLoadingNewTranscripts(false);
     }
   }
 
@@ -461,7 +518,7 @@ export default function DashboardCallPage() {
                   // Fall back to polling every 5 seconds
                   const pollInterval = setInterval(() => {
                     if (callState === "in-call" && activeCallSid) {
-                      loadExistingTranscripts(activeCallSid);
+                      loadNewTranscripts(activeCallSid);
                     } else {
                       clearInterval(pollInterval);
                     }
@@ -585,7 +642,13 @@ export default function DashboardCallPage() {
   const refreshTranscripts = async () => {
     if (activeCallSid) {
       console.log('🔄 Manually refreshing transcripts...');
-      await loadExistingTranscripts(activeCallSid);
+      if (isPollingMode && displayedMessages.length > 0) {
+        // If in polling mode and we have messages, only load new ones
+        await loadNewTranscripts(activeCallSid);
+      } else {
+        // Otherwise load all transcripts (for initial load or when no messages exist)
+        await loadExistingTranscripts(activeCallSid);
+      }
     }
   }
 
@@ -900,6 +963,7 @@ export default function DashboardCallPage() {
                 <div>Active Call SID: {activeCallSid || 'none'}</div>
                 <div>Transcript Mode: {isPollingMode ? '🔄 Polling' : isSubscriptionActive ? '⚡ Realtime' : '⏳ Connecting...'}</div>
                 <div>Messages: {displayedMessages.length}</div>
+                {isLoadingNewTranscripts && <div>🔄 Loading new messages...</div>}
               </div>
 
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
@@ -923,6 +987,12 @@ export default function DashboardCallPage() {
                         messages={displayedMessages}
                       />
                     </div>
+                    {isLoadingNewTranscripts && (
+                      <div className="px-4 py-2 bg-blue-50 border-t border-blue-200 text-xs text-blue-600 flex items-center gap-2">
+                        <div className="animate-spin h-3 w-3 border-b border-blue-600 rounded-full"></div>
+                        Checking for new messages...
+                      </div>
+                    )}
                   </div>
                 ) : transcriptError ? (
                   <div className="flex items-center justify-center h-full">
@@ -936,7 +1006,15 @@ export default function DashboardCallPage() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => activeCallSid && loadExistingTranscripts(activeCallSid)}
+                          onClick={() => {
+                            if (activeCallSid) {
+                              if (isPollingMode && displayedMessages.length > 0) {
+                                loadNewTranscripts(activeCallSid);
+                              } else {
+                                loadExistingTranscripts(activeCallSid);
+                              }
+                            }
+                          }}
                         >
                           Retry
                         </Button>
