@@ -245,7 +245,6 @@ export default function DashboardCallPage() {
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([])
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
   const [isLoadingNewTranscripts, setIsLoadingNewTranscripts] = useState(false)
-  const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [isPollingMode, setIsPollingMode] = useState(false)
   const [isSubscriptionActive, setIsSubscriptionActive] = useState(false)
   const [lastPollTime, setLastPollTime] = useState<number>(0)
@@ -344,7 +343,6 @@ export default function DashboardCallPage() {
     if (!currentCallSid) return
 
     setIsLoadingTranscripts(true)
-    setTranscriptError(null)
     try {
       console.log('Loading transcripts for call SID:', currentCallSid)
       
@@ -356,7 +354,6 @@ export default function DashboardCallPage() {
       
       if (testError) {
         console.error('❌ Supabase connection test failed:', testError)
-        setTranscriptError(`Database connection failed: ${testError.message}`)
         return
       }
       
@@ -370,7 +367,6 @@ export default function DashboardCallPage() {
 
       if (error) {
         console.error('Error loading transcripts:', error)
-        setTranscriptError(`Failed to load transcripts: ${error.message}`)
         return
       }
 
@@ -378,12 +374,9 @@ export default function DashboardCallPage() {
         console.log('Loaded transcripts:', data.length, 'messages')
         const messages = data.map(convertTranscriptToMessage)
         setDisplayedMessages(messages)
-        // Clear any error state when transcripts load successfully
-        setTranscriptError(null)
       }
     } catch (error) {
       console.error('Error loading transcripts:', error)
-      setTranscriptError('Failed to load transcripts')
     } finally {
       setIsLoadingTranscripts(false)
     }
@@ -448,8 +441,6 @@ export default function DashboardCallPage() {
           return [...prev, ...uniqueNewMessages];
         });
         
-        // Clear any error state when new transcripts arrive
-        setTranscriptError(null)
       } else {
         console.log('No new transcripts found');
       }
@@ -494,14 +485,8 @@ export default function DashboardCallPage() {
                   const newTranscript = payload.new as TranscriptRow
                   const newMessage = convertTranscriptToMessage(newTranscript)
                   setDisplayedMessages(prev => [...prev, newMessage])
-                  // Clear any error state when new transcripts arrive
-                  setTranscriptError(null)
                 } catch (error) {
                   console.error('Error processing new transcript:', error)
-                  // Only set error if we don't have any messages yet
-                  if (displayedMessages.length === 0) {
-                    setTranscriptError('Error processing new transcript')
-                  }
                 }
               }
             )
@@ -510,10 +495,6 @@ export default function DashboardCallPage() {
               if (status === 'SUBSCRIBED') {
                 console.log('✅ Successfully subscribed to transcriptions for call:', activeCallSid)
                 setIsSubscriptionActive(true)
-                // Only clear error if we don't have any messages yet
-                if (displayedMessages.length === 0) {
-                  setTranscriptError(null)
-                }
                 retryCount = 0; // Reset retry count on success
               } else if (status === 'CHANNEL_ERROR') {
                 console.error('❌ Error subscribing to transcriptions channel')
@@ -531,13 +512,6 @@ export default function DashboardCallPage() {
                 } else {
                   console.warn('⚠️ Max retries reached, falling back to polling mode')
                   setIsSubscriptionActive(false)
-                  // Only show polling message if we don't have any messages yet
-                  if (displayedMessages.length === 0) {
-                    // Add a small delay before showing the polling message
-                    setTimeout(() => {
-                      setTranscriptError('Realtime unavailable - using polling mode')
-                    }, 2000);
-                  }
                   setIsPollingMode(true)
                   // Fall back to polling every 5 seconds
                   pollInterval = setInterval(() => {
@@ -551,10 +525,6 @@ export default function DashboardCallPage() {
               } else if (status === 'TIMED_OUT') {
                 console.error('⏰ Subscription timed out')
                 setIsSubscriptionActive(false)
-                // Only show timeout error if we don't have any messages yet
-                if (displayedMessages.length === 0) {
-                  setTranscriptError('Subscription timed out - retrying...')
-                }
               } else if (status === 'CLOSED') {
                 console.log('🔴 Subscription closed')
                 setIsSubscriptionActive(false)
@@ -564,10 +534,6 @@ export default function DashboardCallPage() {
             })
         } catch (error) {
           console.error('❌ Error setting up subscription:', error)
-          // Only show setup error if we don't have any messages yet
-          if (displayedMessages.length === 0) {
-            setTranscriptError('Failed to set up realtime connection')
-          }
         }
       };
 
@@ -589,7 +555,6 @@ export default function DashboardCallPage() {
       // Clear messages and errors when not in call
       console.log('📭 Clearing transcripts - not in call')
       setDisplayedMessages([])
-      setTranscriptError(null)
       setIsPollingMode(false)
       setIsSubscriptionActive(false)
     }
@@ -626,40 +591,6 @@ export default function DashboardCallPage() {
   const handleNewCall = () => {
     setTime(0)
     setCallState("idle")
-  }
-
-  // Test function to debug server connectivity
-  const testServerConnectivity = async () => {
-    try {
-      console.log('🧪 Testing server connectivity...');
-      
-      // Test server connectivity
-      const serverResponse = await fetch('/api/test-server');
-      const serverData = await serverResponse.json();
-      console.log('📡 Server test result:', serverData);
-      
-      // Test call SID endpoint
-      const callSidResponse = await fetch('/api/call-sid');
-      const callSidData = await callSidResponse.json();
-      console.log('📞 Call SID test result:', callSidData);
-      
-      // Test Supabase connection
-      const supabaseResponse = await fetch('/api/test-supabase');
-      const supabaseData = await supabaseResponse.json();
-      console.log('🗄️ Supabase test result:', supabaseData);
-      
-      const results = [
-        `Server: ${serverData.success ? '✅' : '❌'}`,
-        `Call SID: ${callSidData.callSid || 'none'}`,
-        `Supabase: ${supabaseData.success ? '✅' : '❌'}`,
-        `Realtime: ${supabaseData.realtime || 'unknown'}`
-      ].join('\n');
-      
-      alert(results);
-    } catch (error) {
-      console.error('❌ Test failed:', error);
-      alert('Test failed: ' + error);
-    }
   }
 
   // Manual refresh function for transcripts
@@ -925,14 +856,6 @@ export default function DashboardCallPage() {
                 Call Now
               </Button>
 
-              <Button
-                onClick={testServerConnectivity}
-                variant="outline"
-                className="w-full mb-4 text-sm transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2"
-              >
-                🧪 Test Server Connection
-              </Button>
-
               <div className="flex-1">
                 <h3 className="text-lg font-semibold mb-2">Notes</h3>
                 <p className="text-gray-500 text-sm">None so far</p>
@@ -979,16 +902,6 @@ export default function DashboardCallPage() {
                   </Button>
                 </div>
               </div>
-              
-              {/* Debug info */}
-              <div className="px-6 py-2 bg-gray-50 text-xs text-gray-600 border-b">
-                <div>Local Call SID: {localCallSid || 'none'}</div>
-                <div>WebSocket Call SID: {callSid || 'none'}</div>
-                <div>Active Call SID: {activeCallSid || 'none'}</div>
-                <div>Transcript Mode: {isPollingMode ? '🔄 Polling' : isSubscriptionActive ? '⚡ Realtime' : '⏳ Connecting...'}</div>
-                <div>Messages: {displayedMessages.length}</div>
-                {isLoadingNewTranscripts && <div>🔄 Loading new messages...</div>}
-              </div>
 
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
                 {isLoadingTranscripts ? (
@@ -999,13 +912,8 @@ export default function DashboardCallPage() {
                     </div>
                   </div>
                 ) : displayedMessages.length > 0 ? (
-                  // Show messages if we have any, regardless of error state
+                  // Show messages if we have any
                   <div className="flex flex-col h-full">
-                    {transcriptError && (
-                      <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-xs text-yellow-700">
-                        ⚠️ {transcriptError} - Showing existing transcripts
-                      </div>
-                    )}
                     <div className="flex-1 overflow-hidden">
                       <ChatTranscript
                         messages={displayedMessages}
@@ -1018,46 +926,11 @@ export default function DashboardCallPage() {
                       </div>
                     )}
                   </div>
-                ) : transcriptError ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <div className="h-8 w-8 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                        <span className="text-red-600 text-lg">!</span>
-                      </div>
-                      <p className="text-sm text-red-600 mb-2">Error loading transcripts</p>
-                      <p className="text-xs text-gray-400 mb-3">{transcriptError}</p>
-                      <div className="flex gap-2 justify-center">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => {
-                            if (activeCallSid) {
-                              if (isPollingMode && displayedMessages.length > 0) {
-                                loadNewTranscripts(activeCallSid);
-                              } else {
-                                loadExistingTranscripts(activeCallSid);
-                              }
-                            }
-                          }}
-                        >
-                          Retry
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={refreshTranscripts}
-                        >
-                          Refresh
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
-                      <p className="text-xs text-gray-400 mt-1">Call SID: {activeCallSid}</p>
                       {isPollingMode && (
                         <p className="text-xs text-blue-500 mt-1">🔄 Polling for new transcripts</p>
                       )}
