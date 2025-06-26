@@ -35,6 +35,7 @@ interface Message {
   name: string;
   message: string;
   timestamp: string;
+  id: number; // Database ID for better deduplication
 }
 
 interface TranscriptRow {
@@ -333,7 +334,8 @@ export default function DashboardCallPage() {
       role: isAgent ? 'agent' : 'user',
       name: isAgent ? 'Sarah Miller' : currentLead.name.split(' ')[0] || 'Customer',
       message: transcript.transcript,
-      timestamp: transcript.timestamp
+      timestamp: transcript.timestamp,
+      id: transcript.id
     }
   }
 
@@ -404,19 +406,21 @@ export default function DashboardCallPage() {
       console.log('🔄 Polling for new transcripts...')
       
       // Get the latest timestamp from existing messages
-      const latestTimestamp = displayedMessages.length > 0 
-        ? displayedMessages[displayedMessages.length - 1].timestamp 
+      const latestId = displayedMessages.length > 0 
+        ? displayedMessages[displayedMessages.length - 1].id 
         : null;
+      
+      console.log('📅 Latest message ID from existing messages:', latestId);
       
       let query = supabase
         .from('transcriptions')
         .select('*')
         .eq('call_sid', currentCallSid)
-        .order('timestamp', { ascending: true });
+        .order('id', { ascending: true }); // Use ID for ordering
       
       // If we have existing messages, only get newer ones
-      if (latestTimestamp) {
-        query = query.gt('timestamp', latestTimestamp);
+      if (latestId) {
+        query = query.gt('id', latestId);
       }
       
       const { data, error } = await query;
@@ -428,10 +432,26 @@ export default function DashboardCallPage() {
 
       if (data && data.length > 0) {
         console.log('Found new transcripts:', data.length, 'messages')
+        console.log('New transcript IDs:', data.map(t => t.id));
+        
         const newMessages = data.map(convertTranscriptToMessage)
-        setDisplayedMessages(prev => [...prev, ...newMessages])
+        
+        // Additional deduplication check
+        setDisplayedMessages(prev => {
+          const existingIds = new Set(prev.map(msg => msg.id));
+          const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.id));
+          
+          if (uniqueNewMessages.length !== newMessages.length) {
+            console.log(`🔄 Filtered out ${newMessages.length - uniqueNewMessages.length} duplicate messages`);
+          }
+          
+          return [...prev, ...uniqueNewMessages];
+        });
+        
         // Clear any error state when new transcripts arrive
         setTranscriptError(null)
+      } else {
+        console.log('No new transcripts found');
       }
     } catch (error) {
       console.error('Error loading new transcripts:', error)
@@ -451,7 +471,8 @@ export default function DashboardCallPage() {
       // Set up realtime subscription with error handling
       let subscription: any = null;
       let retryCount = 0;
-      const maxRetries = 3;
+      const maxRetries = 5; // Increased retries
+      let pollInterval: NodeJS.Timeout | null = null;
 
       const setupSubscription = () => {
         try {
@@ -500,35 +521,32 @@ export default function DashboardCallPage() {
                 retryCount++;
                 
                 if (retryCount < maxRetries) {
-                  console.log(`🔄 Retrying subscription in 2 seconds... (${retryCount}/${maxRetries})`)
+                  console.log(`🔄 Retrying subscription in 3 seconds... (${retryCount}/${maxRetries})`)
                   setTimeout(() => {
                     if (subscription) {
                       supabase.removeChannel(subscription)
                     }
                     setupSubscription();
-                  }, 2000);
+                  }, 3000); // Increased delay
                 } else {
                   console.warn('⚠️ Max retries reached, falling back to polling mode')
                   setIsSubscriptionActive(false)
                   // Only show polling message if we don't have any messages yet
                   if (displayedMessages.length === 0) {
-                    setTranscriptError('Realtime unavailable - using polling mode')
+                    // Add a small delay before showing the polling message
+                    setTimeout(() => {
+                      setTranscriptError('Realtime unavailable - using polling mode')
+                    }, 2000);
                   }
                   setIsPollingMode(true)
                   // Fall back to polling every 5 seconds
-                  const pollInterval = setInterval(() => {
+                  pollInterval = setInterval(() => {
                     if (callState === "in-call" && activeCallSid) {
                       loadNewTranscripts(activeCallSid);
                     } else {
-                      clearInterval(pollInterval);
+                      if (pollInterval) clearInterval(pollInterval);
                     }
                   }, 5000);
-                  
-                  // Clean up polling when component unmounts or call ends
-                  return () => {
-                    clearInterval(pollInterval);
-                    setIsPollingMode(false);
-                  }
                 }
               } else if (status === 'TIMED_OUT') {
                 console.error('⏰ Subscription timed out')
@@ -553,12 +571,18 @@ export default function DashboardCallPage() {
         }
       };
 
-      setupSubscription();
+      // Add a small delay before setting up subscription to allow initial load to complete
+      setTimeout(() => {
+        setupSubscription();
+      }, 1000);
 
       return () => {
         console.log('🧹 Cleaning up transcript subscription')
         if (subscription) {
           supabase.removeChannel(subscription)
+        }
+        if (pollInterval) {
+          clearInterval(pollInterval)
         }
       }
     } else if (callState !== "in-call") {
