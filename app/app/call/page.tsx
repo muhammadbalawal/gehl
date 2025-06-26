@@ -136,6 +136,18 @@ export default function DashboardCallPage() {
   // Use the useCallSid hook to get call SID from WebSocket server
   const callSid = useCallSid();
   
+  // Determine which call SID to use for transcripts
+  const activeCallSid = localCallSid || callSid;
+
+  // Debug logging for call SID tracking
+  useEffect(() => {
+    console.log('🔍 Call SID Debug Info:', {
+      localCallSid,
+      webSocketCallSid: callSid,
+      activeCallSid,
+      callState
+    });
+  }, [localCallSid, callSid, activeCallSid, callState]);
 
   // Trigger overview animations when tab becomes active
   useEffect(() => {
@@ -327,6 +339,21 @@ export default function DashboardCallPage() {
     setTranscriptError(null)
     try {
       console.log('Loading transcripts for call SID:', currentCallSid)
+      
+      // Test Supabase connection first
+      const { data: testData, error: testError } = await supabase
+        .from('transcriptions')
+        .select('count')
+        .limit(1)
+      
+      if (testError) {
+        console.error('❌ Supabase connection test failed:', testError)
+        setTranscriptError(`Database connection failed: ${testError.message}`)
+        return
+      }
+      
+      console.log('✅ Supabase connection test successful')
+      
       const { data, error } = await supabase
         .from('transcriptions')
         .select('*')
@@ -354,9 +381,11 @@ export default function DashboardCallPage() {
 
   // Set up realtime subscription for new transcripts
   useEffect(() => {
-    if (callState === "in-call" && callSid) {
+    if (callState === "in-call" && activeCallSid) {
+      console.log('🎯 Setting up transcript subscription for call SID:', activeCallSid);
+      
       // Load existing transcripts first
-      loadExistingTranscripts(callSid)
+      loadExistingTranscripts(activeCallSid)
 
       // Set up realtime subscription
       const subscription = supabase
@@ -367,7 +396,7 @@ export default function DashboardCallPage() {
             event: 'INSERT',
             schema: 'public',
             table: 'transcriptions',
-            filter: `call_sid=eq.${callSid}`
+            filter: `call_sid=eq.${activeCallSid}`
           },
           (payload) => {
             console.log('New transcript received:', payload)
@@ -383,24 +412,34 @@ export default function DashboardCallPage() {
           }
         )
         .subscribe((status) => {
-          console.log('Subscription status:', status)
+          console.log('📡 Supabase subscription status:', status)
           if (status === 'SUBSCRIBED') {
-            console.log('Successfully subscribed to transcriptions for call:', callSid)
+            console.log('✅ Successfully subscribed to transcriptions for call:', activeCallSid)
+            setTranscriptError(null) // Clear any previous errors
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('Error subscribing to transcriptions channel')
+            console.error('❌ Error subscribing to transcriptions channel')
             setTranscriptError('Failed to connect to live transcriptions')
+          } else if (status === 'TIMED_OUT') {
+            console.error('⏰ Subscription timed out')
+            setTranscriptError('Subscription timed out - retrying...')
+          } else if (status === 'CLOSED') {
+            console.log('🔴 Subscription closed')
+          } else {
+            console.log('ℹ️ Subscription status:', status)
           }
         })
 
       return () => {
+        console.log('🧹 Cleaning up transcript subscription')
         supabase.removeChannel(subscription)
       }
     } else if (callState !== "in-call") {
       // Clear messages and errors when not in call
+      console.log('📭 Clearing transcripts - not in call')
       setDisplayedMessages([])
       setTranscriptError(null)
     }
-  }, [callState, callSid])
+  }, [callState, activeCallSid])
 
 
 
@@ -433,6 +472,28 @@ export default function DashboardCallPage() {
   const handleNewCall = () => {
     setTime(0)
     setCallState("idle")
+  }
+
+  // Test function to debug server connectivity
+  const testServerConnectivity = async () => {
+    try {
+      console.log('🧪 Testing server connectivity...');
+      
+      // Test server connectivity
+      const serverResponse = await fetch('/api/test-server');
+      const serverData = await serverResponse.json();
+      console.log('📡 Server test result:', serverData);
+      
+      // Test call SID endpoint
+      const callSidResponse = await fetch('/api/call-sid');
+      const callSidData = await callSidResponse.json();
+      console.log('📞 Call SID test result:', callSidData);
+      
+      alert(`Server test: ${serverData.success ? '✅' : '❌'}\nCall SID: ${callSidData.callSid || 'none'}`);
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+      alert('Test failed: ' + error);
+    }
   }
 
   const addGridLayer = (mapInstance: mapboxgl.Map) => {
@@ -684,6 +745,14 @@ export default function DashboardCallPage() {
                 Call Now
               </Button>
 
+              <Button
+                onClick={testServerConnectivity}
+                variant="outline"
+                className="w-full mb-4 text-sm transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2"
+              >
+                🧪 Test Server Connection
+              </Button>
+
               <div className="flex-1">
                 <h3 className="text-lg font-semibold mb-2">Notes</h3>
                 <p className="text-gray-500 text-sm">None so far</p>
@@ -730,6 +799,14 @@ export default function DashboardCallPage() {
                   </Button>
                 </div>
               </div>
+              
+              {/* Debug info */}
+              <div className="px-6 py-2 bg-gray-50 text-xs text-gray-600 border-b">
+                <div>Local Call SID: {localCallSid || 'none'}</div>
+                <div>WebSocket Call SID: {callSid || 'none'}</div>
+                <div>Active Call SID: {activeCallSid || 'none'}</div>
+              </div>
+
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
                 {isLoadingTranscripts ? (
                   <div className="flex items-center justify-center h-full">
@@ -750,7 +827,7 @@ export default function DashboardCallPage() {
                         variant="outline" 
                         size="sm" 
                         className="mt-2"
-                        onClick={() => callSid && loadExistingTranscripts(callSid)}
+                        onClick={() => activeCallSid && loadExistingTranscripts(activeCallSid)}
                       >
                         Retry
                       </Button>
@@ -761,7 +838,7 @@ export default function DashboardCallPage() {
                     <div className="text-center">
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-500">Waiting for conversation to start...</p>
-                      <p className="text-xs text-gray-400 mt-1">Call SID: {callSid}</p>
+                      <p className="text-xs text-gray-400 mt-1">Call SID: {activeCallSid}</p>
                     </div>
                   </div>
                 ) : (

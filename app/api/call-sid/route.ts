@@ -18,7 +18,13 @@ function connectToWebSocket() {
   const WS_URL = 'wss://server-wb.onrender.com/frontend';
   
   console.log(`🔄 Attempting to connect to WebSocket (attempt ${connectionAttempts}): ${WS_URL}`);
-  wsConnection = new WebSocket(WS_URL);
+  
+  try {
+    wsConnection = new WebSocket(WS_URL);
+  } catch (error) {
+    console.error('❌ Failed to create WebSocket connection:', error);
+    return;
+  }
 
   wsConnection.on('open', () => {
     console.log('✅ Successfully connected to WebSocket frontend endpoint');
@@ -64,6 +70,10 @@ function connectToWebSocket() {
 
   wsConnection.on('error', (error) => {
     console.error('❌ WebSocket connection error:', error);
+    console.error('🔍 Error details:', {
+      message: error.message,
+      name: error.name
+    });
   });
 }
 
