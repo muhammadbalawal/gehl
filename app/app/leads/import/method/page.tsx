@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChevronLeft, FileText, Search, Mail, ChevronRight } from "lucide-react"
-import { BlurFade } from "@/components/magicui/blur-fade"
+import BlurFade from "@/components/magicui/blur-fade"
 
 function ImportMethodContent() {
   const searchParams = useSearchParams()
@@ -123,7 +123,6 @@ function ImportMethodContent() {
                         key={method.id}
                         delay={0.10 + index * 0.05} 
                         inView={true}
-                        direction="up"
                       >
                         <Card 
                           className={`h-full hover:shadow-md hover:scale-105 transition-all duration-200 cursor-pointer group ${
