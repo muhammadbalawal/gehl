@@ -919,12 +919,6 @@ export default function DashboardCallPage() {
                         messages={displayedMessages}
                       />
                     </div>
-                    {isLoadingNewTranscripts && (
-                      <div className="px-4 py-2 bg-blue-50 border-t border-blue-200 text-xs text-blue-600 flex items-center gap-2">
-                        <div className="animate-spin h-3 w-3 border-b border-blue-600 rounded-full"></div>
-                        Checking for new messages...
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full">
