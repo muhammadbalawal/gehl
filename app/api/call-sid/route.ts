@@ -15,7 +15,7 @@ function connectToWebSocket() {
   }
 
   connectionAttempts++;
-  const WS_URL = 'ws://server-wb.onrender.com/frontend';
+  const WS_URL = 'wss://server-wb.onrender.com/frontend';
   
   console.log(`🔄 Attempting to connect to WebSocket (attempt ${connectionAttempts}): ${WS_URL}`);
   wsConnection = new WebSocket(WS_URL);
