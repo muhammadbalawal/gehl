@@ -244,6 +244,7 @@ export default function DashboardCallPage() {
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [isPollingMode, setIsPollingMode] = useState(false)
+  const [isSubscriptionActive, setIsSubscriptionActive] = useState(false)
 
   // Popover states
   const [callbackDate, setCallbackDate] = useState<Date>()
@@ -371,6 +372,8 @@ export default function DashboardCallPage() {
         console.log('Loaded transcripts:', data.length, 'messages')
         const messages = data.map(convertTranscriptToMessage)
         setDisplayedMessages(messages)
+        // Clear any error state when transcripts load successfully
+        setTranscriptError(null)
       }
     } catch (error) {
       console.error('Error loading transcripts:', error)
@@ -413,10 +416,14 @@ export default function DashboardCallPage() {
                   const newTranscript = payload.new as TranscriptRow
                   const newMessage = convertTranscriptToMessage(newTranscript)
                   setDisplayedMessages(prev => [...prev, newMessage])
-                  setTranscriptError(null) // Clear any previous errors
+                  // Clear any error state when new transcripts arrive
+                  setTranscriptError(null)
                 } catch (error) {
                   console.error('Error processing new transcript:', error)
-                  setTranscriptError('Error processing new transcript')
+                  // Only set error if we don't have any messages yet
+                  if (displayedMessages.length === 0) {
+                    setTranscriptError('Error processing new transcript')
+                  }
                 }
               }
             )
@@ -424,10 +431,15 @@ export default function DashboardCallPage() {
               console.log('📡 Supabase subscription status:', status)
               if (status === 'SUBSCRIBED') {
                 console.log('✅ Successfully subscribed to transcriptions for call:', activeCallSid)
-                setTranscriptError(null) // Clear any previous errors
+                setIsSubscriptionActive(true)
+                // Only clear error if we don't have any messages yet
+                if (displayedMessages.length === 0) {
+                  setTranscriptError(null)
+                }
                 retryCount = 0; // Reset retry count on success
               } else if (status === 'CHANNEL_ERROR') {
                 console.error('❌ Error subscribing to transcriptions channel')
+                setIsSubscriptionActive(false)
                 retryCount++;
                 
                 if (retryCount < maxRetries) {
@@ -440,7 +452,11 @@ export default function DashboardCallPage() {
                   }, 2000);
                 } else {
                   console.warn('⚠️ Max retries reached, falling back to polling mode')
-                  setTranscriptError('Realtime unavailable - using polling mode')
+                  setIsSubscriptionActive(false)
+                  // Only show polling message if we don't have any messages yet
+                  if (displayedMessages.length === 0) {
+                    setTranscriptError('Realtime unavailable - using polling mode')
+                  }
                   setIsPollingMode(true)
                   // Fall back to polling every 5 seconds
                   const pollInterval = setInterval(() => {
@@ -459,16 +475,24 @@ export default function DashboardCallPage() {
                 }
               } else if (status === 'TIMED_OUT') {
                 console.error('⏰ Subscription timed out')
-                setTranscriptError('Subscription timed out - retrying...')
+                setIsSubscriptionActive(false)
+                // Only show timeout error if we don't have any messages yet
+                if (displayedMessages.length === 0) {
+                  setTranscriptError('Subscription timed out - retrying...')
+                }
               } else if (status === 'CLOSED') {
                 console.log('🔴 Subscription closed')
+                setIsSubscriptionActive(false)
               } else {
                 console.log('ℹ️ Subscription status:', status)
               }
             })
         } catch (error) {
           console.error('❌ Error setting up subscription:', error)
-          setTranscriptError('Failed to set up realtime connection')
+          // Only show setup error if we don't have any messages yet
+          if (displayedMessages.length === 0) {
+            setTranscriptError('Failed to set up realtime connection')
+          }
         }
       };
 
@@ -486,6 +510,7 @@ export default function DashboardCallPage() {
       setDisplayedMessages([])
       setTranscriptError(null)
       setIsPollingMode(false)
+      setIsSubscriptionActive(false)
     }
   }, [callState, activeCallSid])
 
@@ -873,7 +898,8 @@ export default function DashboardCallPage() {
                 <div>Local Call SID: {localCallSid || 'none'}</div>
                 <div>WebSocket Call SID: {callSid || 'none'}</div>
                 <div>Active Call SID: {activeCallSid || 'none'}</div>
-                <div>Transcript Mode: {isPollingMode ? '🔄 Polling' : '⚡ Realtime'}</div>
+                <div>Transcript Mode: {isPollingMode ? '🔄 Polling' : isSubscriptionActive ? '⚡ Realtime' : '⏳ Connecting...'}</div>
+                <div>Messages: {displayedMessages.length}</div>
               </div>
 
               <div className="flex flex-col justify-end transition-all duration-300 ease-in-out overflow-hidden" style={{ height: `${callInterfaceHeight - 120}px` }}>
@@ -882,6 +908,20 @@ export default function DashboardCallPage() {
                     <div className="text-center">
                       <div className="animate-spin h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
                       <p className="text-sm text-gray-500">Loading transcripts...</p>
+                    </div>
+                  </div>
+                ) : displayedMessages.length > 0 ? (
+                  // Show messages if we have any, regardless of error state
+                  <div className="flex flex-col h-full">
+                    {transcriptError && (
+                      <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-xs text-yellow-700">
+                        ⚠️ {transcriptError} - Showing existing transcripts
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-hidden">
+                      <ChatTranscript
+                        messages={displayedMessages}
+                      />
                     </div>
                   </div>
                 ) : transcriptError ? (
@@ -910,7 +950,7 @@ export default function DashboardCallPage() {
                       </div>
                     </div>
                   </div>
-                ) : displayedMessages.length === 0 ? (
+                ) : (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
                       <Mic className="h-8 w-8 text-gray-400 mx-auto mb-2" />
@@ -921,10 +961,6 @@ export default function DashboardCallPage() {
                       )}
                     </div>
                   </div>
-                ) : (
-                  <ChatTranscript
-                    messages={displayedMessages}
-                  />
                 )}
               </div>
             </div>
