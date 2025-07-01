@@ -256,15 +256,100 @@ export default function DashboardCallPage() {
   const [callbackOpen, setCallbackOpen] = useState(false)
   const [reminderOpen, setReminderOpen] = useState(false)
 
+  // Campaign and lead management
+  const [selectedCampaign, setSelectedCampaign] = useState<{id: number, name: string} | null>(null)
+  const [campaigns, setCampaigns] = useState<{id: number, name: string}[]>([])
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true)
+  const [loadingLeads, setLoadingLeads] = useState(false)
+  
   // Lead navigation
   const [currentLeadIndex, setCurrentLeadIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const currentLead = leadsData[currentLeadIndex]
+  const currentLead = leads.length > 0 ? leads[currentLeadIndex] : null
+
+  // Fetch campaigns on mount
+  useEffect(() => {
+    const fetchCampaigns = async () => {
+      try {
+        setLoadingCampaigns(true)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) {
+          throw new Error('You must be logged in')
+        }
+        
+        const response = await fetch(`/api/campaigns?user_id=${session.user.id}`)
+        const result = await response.json()
+
+        if (result.success) {
+          setCampaigns(result.campaigns || [])
+        }
+      } catch (err) {
+        console.error('Error fetching campaigns:', err)
+      } finally {
+        setLoadingCampaigns(false)
+      }
+    }
+
+    fetchCampaigns()
+  }, [])
+
+  // Fetch leads when campaign is selected
+  useEffect(() => {
+    const fetchLeads = async () => {
+      if (!selectedCampaign) return
+
+      try {
+        setLoadingLeads(true)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) {
+          throw new Error('You must be logged in')
+        }
+        
+        const response = await fetch(`/api/leads?user_id=${session.user.id}&campaign_id=${selectedCampaign.id}`)
+        const result = await response.json()
+
+        if (result.success) {
+          // Convert database leads to the format expected by the call tabs
+          const formattedLeads: Lead[] = result.leads.map((lead: any, index: number) => ({
+            id: lead.id,
+            name: lead.name || 'Unnamed Lead',
+            shortName: lead.name || 'Unnamed Lead',
+            logo: "/dentist_logo.png", // Default logo
+            category: "Business",
+            rating: 0,
+            totalReviews: 0,
+            hours: "Unknown",
+            phone: lead.phone_number || "No phone",
+            email: lead.email || "No email",
+            address: lead.location || "No address",
+            website: lead.website || "No website",
+            photos: 0,
+            monthlyVisitors: 0,
+            facebook: null,
+            instagram: null,
+            google: null,
+            websiteImage: "/dentist_website.png"
+          }))
+          
+          setLeads(formattedLeads)
+          setCurrentLeadIndex(0) // Reset to first lead
+        }
+      } catch (err) {
+        console.error('Error fetching leads:', err)
+      } finally {
+        setLoadingLeads(false)
+      }
+    }
+
+    fetchLeads()
+  }, [selectedCampaign])
 
   const handleNext = () => {
+    if (leads.length === 0) return
     setIsTransitioning(true)
     setTimeout(() => {
-      setCurrentLeadIndex((prev) => (prev + 1) % leadsData.length)
+      setCurrentLeadIndex((prev) => (prev + 1) % leads.length)
       setTimeout(() => {
         setIsTransitioning(false)
       }, 50)
@@ -272,9 +357,10 @@ export default function DashboardCallPage() {
   }
 
   const handleBack = () => {
+    if (leads.length === 0) return
     setIsTransitioning(true)
     setTimeout(() => {
-      setCurrentLeadIndex((prev) => (prev - 1 + leadsData.length) % leadsData.length)
+      setCurrentLeadIndex((prev) => (prev - 1 + leads.length) % leads.length)
       setTimeout(() => {
         setIsTransitioning(false)
       }, 50)
@@ -728,13 +814,104 @@ export default function DashboardCallPage() {
   }
 
   return <>
-
     <SiteHeader title="Call" />
     <div className="flex flex-row gap-4 p-4 flex-1 min-h-0">
-      <div className="w-[70%] flex flex-col">
-        <h1 className={`mb-4 text-2xl font-bold transition-all duration-300 ${isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
-          {currentLead.name}
-        </h1>
+      
+      {/* Campaign Selection View */}
+      {!selectedCampaign ? (
+        <div className="w-full flex flex-col items-center justify-center min-h-[60vh]">
+          <Card className="w-full max-w-md p-6">
+            <div className="text-center space-y-4">
+              <h2 className="text-2xl font-semibold">Select Campaign</h2>
+              <p className="text-muted-foreground">
+                Choose a campaign to start calling leads
+              </p>
+              
+              {loadingCampaigns ? (
+                <div className="py-8">
+                  <div className="animate-spin h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-500">Loading campaigns...</p>
+                </div>
+              ) : campaigns.length === 0 ? (
+                <div className="py-8">
+                  <p className="text-muted-foreground mb-4">No campaigns found</p>
+                  <Button asChild variant="outline">
+                    <a href="/app/leads/import">Import Leads</a>
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {campaigns.map((campaign) => (
+                    <Button
+                      key={campaign.id}
+                      variant="outline"
+                      className="w-full p-4 h-auto"
+                      onClick={() => setSelectedCampaign(campaign)}
+                    >
+                      <div className="text-left">
+                        <div className="font-semibold">{campaign.name}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      ) : (
+        /* Lead Interface View */
+        <>
+          <div className="w-[70%] flex flex-col">
+            {/* Campaign Header with Back Button */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setSelectedCampaign(null)
+                    setLeads([])
+                    setCurrentLeadIndex(0)
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Back to Campaigns
+                </Button>
+                <div className="text-sm text-muted-foreground">
+                  {selectedCampaign.name}
+                </div>
+              </div>
+              {leads.length > 0 && (
+                <div className="text-sm text-muted-foreground">
+                  Lead {currentLeadIndex + 1} of {leads.length}
+                </div>
+              )}
+            </div>
+
+            {loadingLeads ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-500">Loading leads...</p>
+                </div>
+              </div>
+            ) : leads.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <Card className="p-8 text-center">
+                  <h3 className="text-lg font-semibold mb-2">No Leads Found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    This campaign doesn't have any leads yet.
+                  </p>
+                  <Button asChild variant="outline">
+                    <a href="/app/leads/import">Import Leads</a>
+                  </Button>
+                </Card>
+              </div>
+            ) : currentLead ? (
+              <>
+                <h1 className={`mb-4 text-2xl font-bold transition-all duration-300 ${isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
+                  {currentLead.name}
+                </h1>
 
         <Tabs defaultValue="lead-overview" className="flex-1 flex flex-col" onValueChange={setActiveTab}>
           <TabsList className="w-fit mb-4">
@@ -782,8 +959,10 @@ export default function DashboardCallPage() {
             />
           </TabsContent>
         </Tabs>
-      </div>
-      <div className="w-[30%] flex flex-col">
+              </>
+            ) : null}
+          </div>
+          <div className="w-[30%] flex flex-col">
         <div className="flex flex-col gap-2 mb-4">
           <Popover open={callbackOpen} onOpenChange={setCallbackOpen}>
             <PopoverTrigger asChild>
@@ -870,7 +1049,7 @@ export default function DashboardCallPage() {
                 <Phone className="h-12 w-12 text-blue-500 animate-pulse" />
               </div>
               <h3 className="text-xl font-semibold mb-2">Calling...</h3>
-              <p className="text-gray-500 text-sm">{currentLead.phone}</p>
+              <p className="text-gray-500 text-sm">{currentLead?.phone}</p>
             </div>
           ) : callState === "in-call" ? (
             <div
@@ -968,16 +1147,27 @@ export default function DashboardCallPage() {
           )}
         </Card>
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 flex items-center justify-center gap-2" onClick={handleBack}>
+          <Button 
+            variant="outline" 
+            className="flex-1 flex items-center justify-center gap-2" 
+            onClick={handleBack}
+            disabled={leads.length <= 1}
+          >
             <ChevronLeft className="h-4 w-4" />
             Back
           </Button>
-          <Button className="flex-1 flex items-center justify-center gap-2" onClick={handleNext}>
+          <Button 
+            className="flex-1 flex items-center justify-center gap-2" 
+            onClick={handleNext}
+            disabled={leads.length <= 1}
+          >
             Next
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
+        </>
+      )}
     </div>
   </>
 }
