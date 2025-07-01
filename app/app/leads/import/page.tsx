@@ -14,17 +14,55 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function ImportPage() {
   const [campaignName, setCampaignName] = useState("")
   const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isCreating, setIsCreating] = useState(false)
+  const [error, setError] = useState("")
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (campaignName.trim()) {
-      // Store campaign name and navigate to method selection
-      // In a real app, you'd store this in state/context/localStorage
-      router.push(`/app/leads/import/method?campaign=${encodeURIComponent(campaignName)}`)
+    if (!campaignName.trim()) return
+
+    setIsCreating(true)
+    setError("")
+
+    try {
+      // Get the authenticated user
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) {
+        throw new Error('You must be logged in to create a campaign')
+      }
+      const user_id = session.user.id
+
+      const response = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: campaignName.trim(),
+          user_id: user_id
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create campaign')
+      }
+
+      // Store campaign data and navigate to method selection
+      const campaign = result.campaign
+      router.push(`/app/leads/import/method?campaign=${encodeURIComponent(campaignName)}&campaignId=${campaign.id}`)
+    } catch (err) {
+      console.error('Error creating campaign:', err)
+      setError(err instanceof Error ? err.message : 'Failed to create campaign')
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -67,15 +105,19 @@ export default function ImportPage() {
                           onChange={(e) => setCampaignName(e.target.value)}
                           className="h-12 text-base"
                           required
+                          disabled={isCreating}
                         />
+                        {error && (
+                          <p className="text-sm text-red-600 mt-2">{error}</p>
+                        )}
                       </div>
                       <Button 
                         type="submit" 
                         size="lg" 
                         className="w-full"
-                        disabled={!campaignName.trim()}
+                        disabled={!campaignName.trim() || isCreating}
                       >
-                        Continue
+                        {isCreating ? 'Creating...' : 'Continue'}
                         <ChevronRight className="h-4 w-4 ml-2" />
                       </Button>
                     </form>

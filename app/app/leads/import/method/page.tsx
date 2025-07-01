@@ -17,6 +17,7 @@ import BlurFade from "@/components/magicui/blur-fade"
 function ImportMethodContent() {
   const searchParams = useSearchParams()
   const campaignName = searchParams.get('campaign') || 'New Campaign'
+  const campaignId = searchParams.get('campaignId')
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null)
 
   // Google Sheets icon component
@@ -41,7 +42,7 @@ function ImportMethodContent() {
       icon: FileText,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50 dark:bg-green-950/20',
-      href: `/app/leads/import/csv?campaign=${encodeURIComponent(campaignName)}`
+      href: `/app/leads/import/csv?campaign=${encodeURIComponent(campaignName)}&campaignId=${campaignId}`
     },
     {
       id: 'finder',
@@ -50,7 +51,7 @@ function ImportMethodContent() {
       icon: Search,
       iconColor: 'text-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-950/20',
-      href: `/app/leads/import/finder?campaign=${encodeURIComponent(campaignName)}`
+      href: `/app/leads/import/finder?campaign=${encodeURIComponent(campaignName)}&campaignId=${campaignId}`
     },
     {
       id: 'manual',
@@ -59,7 +60,7 @@ function ImportMethodContent() {
       icon: Mail,
       iconColor: 'text-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-950/20',
-      href: `/app/leads/import/manual?campaign=${encodeURIComponent(campaignName)}`
+      href: `/app/leads/import/manual?campaign=${encodeURIComponent(campaignName)}&campaignId=${campaignId}`
     },
     {
       id: 'sheets',
@@ -68,7 +69,7 @@ function ImportMethodContent() {
       icon: GoogleSheetsIcon,
       iconColor: '',
       bgColor: 'bg-emerald-50 dark:bg-emerald-950/20',
-      href: `/app/leads/import/sheets?campaign=${encodeURIComponent(campaignName)}`
+      href: `/app/leads/import/sheets?campaign=${encodeURIComponent(campaignName)}&campaignId=${campaignId}`
     }
   ]
 

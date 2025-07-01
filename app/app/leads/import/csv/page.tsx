@@ -20,17 +20,18 @@ import {
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { ChevronLeft, Upload, FileText, X, CheckCircle, User, Mail, Phone, Building, MapPin, Calendar, Hash } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
 // Define available column types with icons
 const columnTypes = [
-  { value: "first_name", label: "First Name", icon: User },
-  { value: "last_name", label: "Last Name", icon: User },
-  { value: "email", label: "Email", icon: Mail },
-  { value: "phone", label: "Phone", icon: Phone },
-  { value: "business_name", label: "Business Name", icon: Building },
+  { value: "name", label: "Name", icon: User },
   { value: "location", label: "Location", icon: MapPin },
-  { value: "last_interacted", label: "Last Interacted", icon: Calendar },
-  { value: "ignore", label: "Ignore Column", icon: X },
+  { value: "gmb_link", label: "Google My Business Link", icon: Building },
+  { value: "email", label: "Email", icon: Mail },
+  { value: "phone_number", label: "Phone Number", icon: Phone },
+  { value: "website", label: "Website", icon: Building },
+  { value: "latitude", label: "Latitude", icon: Hash },
+  { value: "longitude", label: "Longitude", icon: Hash },
 ]
 
 function CSVUploadContent() {
@@ -47,6 +48,42 @@ function CSVUploadContent() {
   const [csvPreview, setCsvPreview] = useState<Record<string, string>>({})
   const [isImporting, setIsImporting] = useState(false)
 
+  // Proper CSV parsing function that handles quotes and commas
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = []
+    let current = ''
+    let inQuotes = false
+    let i = 0
+
+    while (i < line.length) {
+      const char = line[i]
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"'
+          i += 2
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes
+          i++
+        }
+      } else if (char === ',' && !inQuotes) {
+        // Field separator
+        result.push(current.trim())
+        current = ''
+        i++
+      } else {
+        current += char
+        i++
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim())
+    return result
+  }
+
   const parseCSVHeaders = async (file: File) => {
     return new Promise<string[]>((resolve, reject) => {
       const reader = new FileReader()
@@ -54,7 +91,7 @@ function CSVUploadContent() {
         try {
           const text = e.target?.result as string
           const firstLine = text.split('\n')[0]
-          const headers = firstLine.split(',').map(header => header.trim().replace(/"/g, ''))
+          const headers = parseCSVLine(firstLine)
           resolve(headers)
         } catch (error) {
           reject(error)
@@ -71,14 +108,14 @@ function CSVUploadContent() {
       reader.onload = (e) => {
         try {
           const text = e.target?.result as string
-          const lines = text.split('\n')
+          const lines = text.split('\n').filter(line => line.trim())
           if (lines.length < 2) {
             resolve({})
             return
           }
           
-          const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''))
-          const firstDataRow = lines[1].split(',').map(cell => cell.trim().replace(/"/g, ''))
+          const headers = parseCSVLine(lines[0])
+          const firstDataRow = parseCSVLine(lines[1])
           
           const preview: Record<string, string> = {}
           headers.forEach((header, index) => {
@@ -86,6 +123,39 @@ function CSVUploadContent() {
           })
           
           resolve(preview)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(file)
+    })
+  }
+
+  const parseCSVData = async (file: File) => {
+    return new Promise<Record<string, string>[]>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string
+          const lines = text.split('\n').filter(line => line.trim()) // Remove empty lines
+          if (lines.length < 2) {
+            resolve([])
+            return
+          }
+          
+          const headers = parseCSVLine(lines[0])
+          const dataRows = lines.slice(1).map(line => parseCSVLine(line))
+          
+          const data = dataRows.map(row => {
+            const rowData: Record<string, string> = {}
+            headers.forEach((header, index) => {
+              rowData[header] = row[index] || ''
+            })
+            return rowData
+          })
+          
+          resolve(data)
         } catch (error) {
           reject(error)
         }
@@ -110,25 +180,38 @@ function CSVUploadContent() {
       setCsvColumns(headers)
       setCsvPreview(preview)
       
-      // Initialize column mappings
+      // Initialize column mappings with conflict prevention
       const initialMappings: Record<string, string> = {}
+      const usedTypes = new Set<string>()
+      
       headers.forEach(header => {
-        // Try to auto-detect common column types
+        // Try to auto-detect common column types, but prevent conflicts
         const lowerHeader = header.toLowerCase()
-        if (lowerHeader.includes('first') && lowerHeader.includes('name')) {
-          initialMappings[header] = 'first_name'
-        } else if (lowerHeader.includes('last') && lowerHeader.includes('name')) {
-          initialMappings[header] = 'last_name'
-        } else if (lowerHeader.includes('email')) {
-          initialMappings[header] = 'email'
-        } else if (lowerHeader.includes('phone')) {
-          initialMappings[header] = 'phone'
-        } else if (lowerHeader.includes('business') || lowerHeader.includes('company')) {
-          initialMappings[header] = 'business_name'
-        } else if (lowerHeader.includes('location') || lowerHeader.includes('address')) {
-          initialMappings[header] = 'location'
+        let detectedType = ''
+        
+        if (lowerHeader.includes('name') && !lowerHeader.includes('business') && !lowerHeader.includes('company') && !usedTypes.has('name')) {
+          detectedType = 'name'
+        } else if (lowerHeader.includes('email') && !usedTypes.has('email')) {
+          detectedType = 'email'
+        } else if (lowerHeader.includes('phone') && !usedTypes.has('phone_number')) {
+          detectedType = 'phone_number'
+        } else if ((lowerHeader.includes('location') || lowerHeader.includes('address') || lowerHeader.includes('city')) && !usedTypes.has('location')) {
+          detectedType = 'location'
+        } else if ((lowerHeader.includes('website') || lowerHeader.includes('url') || lowerHeader.includes('site')) && !usedTypes.has('website')) {
+          detectedType = 'website'
+        } else if ((lowerHeader.includes('gmb') || lowerHeader.includes('google') || lowerHeader.includes('business')) && !usedTypes.has('gmb_link')) {
+          detectedType = 'gmb_link'
+        } else if (lowerHeader.includes('lat') && !lowerHeader.includes('long') && !usedTypes.has('latitude')) {
+          detectedType = 'latitude'
+        } else if ((lowerHeader.includes('lng') || lowerHeader.includes('long')) && !usedTypes.has('longitude')) {
+          detectedType = 'longitude'
+        }
+        
+        if (detectedType) {
+          usedTypes.add(detectedType)
+          initialMappings[header] = detectedType
         } else {
-          initialMappings[header] = '' // No default selection
+          initialMappings[header] = '' // Empty default
         }
       })
       setColumnMappings(initialMappings)
@@ -201,18 +284,93 @@ function CSVUploadContent() {
   const updateColumnMapping = (columnName: string, type: string) => {
     setColumnMappings(prev => ({
       ...prev,
-      [columnName]: type
+      [columnName]: type === 'clear' ? '' : type
     }))
+  }
+
+  // Get available column types for a specific column
+  const getAvailableTypes = (currentColumnName: string) => {
+    const usedTypes = new Set(
+      Object.entries(columnMappings)
+        .filter(([colName, type]) => colName !== currentColumnName && type !== '')
+        .map(([, type]) => type)
+    )
+    
+    return columnTypes.filter(type => !usedTypes.has(type.value))
   }
 
   const handleImport = async () => {
     setIsImporting(true)
     
-    // Simulate import process
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // Redirect to leads page
-    router.push('/app/leads')
+    try {
+      if (!uploadedFile) {
+        throw new Error('No file uploaded')
+      }
+
+      // Get campaign ID from URL parameters
+      const campaignId = searchParams.get('campaignId')
+      if (!campaignId) {
+        throw new Error('Campaign ID not found')
+      }
+
+      // Parse CSV file to get all rows
+      const csvData = await parseCSVData(uploadedFile)
+      
+      // Map CSV data to lead objects based on column mappings
+      const leads = csvData.map(row => {
+        const lead: any = {}
+        Object.entries(columnMappings).forEach(([csvColumn, mappedType]) => {
+          if (mappedType && mappedType !== '') {
+            lead[mappedType] = row[csvColumn] || null
+          }
+        })
+        return lead
+      })
+
+      // Filter out leads that have no useful data
+      const validLeads = leads.filter(lead => 
+        lead.name || lead.email || lead.phone_number || lead.location
+      )
+
+      if (validLeads.length === 0) {
+        throw new Error('No valid leads found in CSV')
+      }
+
+      // Get the authenticated user
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) {
+        throw new Error('You must be logged in to import leads')
+      }
+      const user_id = session.user.id
+
+      // Send leads to API
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          leads: validLeads,
+          campaign_id: parseInt(campaignId),
+          user_id: user_id
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to import leads')
+      }
+
+      // Redirect to leads page with success message
+      router.push('/app/leads?imported=true')
+    } catch (err) {
+      console.error('Error importing leads:', err)
+      // You might want to show an error message to the user here
+      alert(err instanceof Error ? err.message : 'Failed to import leads')
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   return <>
@@ -224,7 +382,7 @@ function CSVUploadContent() {
               {/* Back button and campaign info */}
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/app/leads/import/method">
+                  <Link href={`/app/leads/import/method?campaign=${encodeURIComponent(campaignName)}&campaignId=${searchParams.get('campaignId') || ''}`}>
                     <ChevronLeft className="h-4 w-4 mr-1" />
                     Choose another method
                   </Link>
@@ -340,8 +498,11 @@ function CSVUploadContent() {
                                 <div className="space-y-2">
                                   <h3 className="text-lg font-semibold">Map Your Columns</h3>
                                   <p className="text-sm text-muted-foreground">
-                                    Select the type for each column from your CSV file
+                                    Select the type for each column from your CSV file. Each type can only be used once.
                                   </p>
+                                  <div className="text-xs text-muted-foreground">
+                                    {Object.values(columnMappings).filter(type => type && type !== '').length} of {columnTypes.length} field types mapped
+                                  </div>
                                 </div>
                                 
                                 <div className="space-y-3">
@@ -350,10 +511,18 @@ function CSVUploadContent() {
                                     <div>Select Type</div>
                                     <div>Preview</div>
                                   </div>
-                                  {csvColumns.map((column, index) => (
+                                  {csvColumns.map((column, index) => {
+                                    const isMapped = columnMappings[column] && columnMappings[column] !== ''
+                                    const mappingType = columnMappings[column]
+                                    return (
                                     <div key={index} className="grid grid-cols-3 gap-4 items-center">
                                       <div>
-                                        <p className="font-medium text-sm">{column}</p>
+                                        <p className="font-medium text-sm flex items-center gap-2">
+                                          {column}
+                                          {isMapped && (
+                                            <span className="inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+                                          )}
+                                        </p>
                                       </div>
                                       <div>
                                         <Select
@@ -361,10 +530,16 @@ function CSVUploadContent() {
                                           onValueChange={(value) => updateColumnMapping(column, value)}
                                         >
                                           <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select Type" />
+                                            <SelectValue placeholder="Not selected" />
                                           </SelectTrigger>
                                           <SelectContent>
-                                            {columnTypes.map((type) => {
+                                            <SelectItem value="clear">
+                                              <div className="flex items-center gap-2">
+                                                <X className="h-4 w-4" />
+                                                <span className="text-muted-foreground italic">Clear Selection</span>
+                                              </div>
+                                            </SelectItem>
+                                            {getAvailableTypes(column).map((type) => {
                                               const IconComponent = type.icon
                                               return (
                                                 <SelectItem key={type.value} value={type.value}>
@@ -384,7 +559,7 @@ function CSVUploadContent() {
                                         </p>
                                       </div>
                                     </div>
-                                  ))}
+                                  )})}
                                 </div>
                               </div>
                             </CardContent>

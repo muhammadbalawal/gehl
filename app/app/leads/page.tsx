@@ -35,9 +35,26 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Filter, Plus, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
 
-// Mock data for leads
-const leadsData = [
+// Interface for lead data
+interface Lead {
+  id: number
+  name: string | null
+  location: string | null
+  email: string | null
+  phone_number: string | null
+  website: string | null
+  gmb_link: string | null
+  status: string | null
+  last_interacted: string | null
+  created_at: string
+  campaign: { name: string } | null
+}
+
+// Mock data for leads (fallback)
+const mockLeadsData = [
   {
     id: 1,
     name: "Dr. Sarah Johnson",
@@ -302,11 +319,67 @@ const statusColors = {
 }
 
 export default function LeadsPage() {
+  const searchParams = useSearchParams()
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedLeads, setSelectedLeads] = useState<number[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // Fetch leads from API
+  useEffect(() => {
+    const fetchLeads = async () => {
+      try {
+        setLoading(true)
+        // Get the authenticated user
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) {
+          throw new Error('You must be logged in to view leads')
+        }
+        const user_id = session.user.id
+        
+        const response = await fetch(`/api/leads?user_id=${user_id}`)
+        const result = await response.json()
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to fetch leads')
+        }
+
+        setLeads(result.leads || [])
+
+        // Check if user just imported leads and show success message
+        const imported = searchParams.get('imported')
+        if (imported === 'true') {
+          // You could show a toast notification here
+          console.log('Leads imported successfully!')
+        }
+      } catch (err) {
+        console.error('Error fetching leads:', err)
+        setError(err instanceof Error ? err.message : 'Failed to fetch leads')
+        // Fall back to mock data on error
+        setLeads(mockLeadsData.map(lead => ({
+          id: lead.id,
+          name: lead.name,
+          location: lead.location,
+          email: lead.email,
+          phone_number: lead.phone,
+          website: null,
+          gmb_link: null,
+          status: lead.status,
+          last_interacted: lead.lastInteracted,
+          created_at: new Date().toISOString(),
+          campaign: { name: lead.campaign }
+        })))
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchLeads()
+  }, [searchParams])
 
   // Calculate items per page based on screen height
   useEffect(() => {
@@ -352,10 +425,10 @@ export default function LeadsPage() {
   }, [])
 
   // Filter leads based on search term and status
-  const filteredLeads = leadsData.filter(lead => {
-    const matchesSearch = lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lead.business.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lead.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredLeads = leads.filter(lead => {
+    const matchesSearch = (lead.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                         (lead.location?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                         (lead.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === "all" || lead.status === statusFilter
     return matchesSearch && matchesStatus
   })
@@ -445,7 +518,10 @@ export default function LeadsPage() {
 
               {/* Results summary */}
               <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{filteredLeads.length} leads found</span>
+                <span>
+                  {loading ? 'Loading...' : `${filteredLeads.length} leads found`}
+                  {error && <span className="text-red-600 ml-2">({error})</span>}
+                </span>
                 {selectedLeads.length > 0 && (
                   <span>{selectedLeads.length} selected</span>
                 )}
@@ -464,10 +540,10 @@ export default function LeadsPage() {
                         />
                       </TableHead>
                       <TableHead>Name</TableHead>
-                      <TableHead>Business</TableHead>
                       <TableHead>Location</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Phone</TableHead>
+                      <TableHead>Website</TableHead>
                       <TableHead>Campaign</TableHead>
                       <TableHead>Last Interacted</TableHead>
                       <TableHead>Status</TableHead>
@@ -475,7 +551,37 @@ export default function LeadsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedLeads.map((lead) => (
+                    {loading ? (
+                      // Loading skeleton rows
+                      Array.from({ length: 5 }).map((_, index) => (
+                        <TableRow key={`loading-${index}`}>
+                          <TableCell><div className="h-4 w-4 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-40 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-28 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-36 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-16 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-8 bg-muted animate-pulse rounded"></div></TableCell>
+                        </TableRow>
+                      ))
+                    ) : paginatedLeads.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                          {error ? 'Failed to load leads. Using demo data.' : 'No leads found.'}
+                          <div className="mt-2">
+                            <Button asChild variant="outline" size="sm">
+                              <Link href="/app/leads/import">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Import your first leads
+                              </Link>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : paginatedLeads.map((lead) => (
                       <TableRow key={lead.id}>
                         <TableCell>
                           <Checkbox
@@ -485,36 +591,56 @@ export default function LeadsPage() {
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          <span>{lead.name}</span>
+                          <span>{lead.name || 'No name'}</span>
                         </TableCell>
-                        <TableCell>{lead.business}</TableCell>
-                        <TableCell>{lead.location}</TableCell>
+                        <TableCell>{lead.location || 'Not specified'}</TableCell>
                         <TableCell>
-                          <a href={`mailto:${lead.email}`} className="hover:underline">
-                            {lead.email}
-                          </a>
-                        </TableCell>
-                        <TableCell>
-                          <a href={`tel:${lead.phone}`} className="hover:underline">
-                            {lead.phone}
-                          </a>
+                          {lead.email ? (
+                            <a href={`mailto:${lead.email}`} className="hover:underline">
+                              {lead.email}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">No email</span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-xs">
-                            {lead.campaign}
-                          </Badge>
+                          {lead.phone_number ? (
+                            <a href={`tel:${lead.phone_number}`} className="hover:underline">
+                              {lead.phone_number}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">No phone</span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <span className={lead.lastInteracted === "no interactions" ? "text-muted-foreground italic" : ""}>
-                            {formatDate(lead.lastInteracted)}
+                          {lead.website ? (
+                            <a href={lead.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                              {lead.website}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">No website</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {lead.campaign?.name ? (
+                            <Badge variant="secondary" className="text-xs">
+                              {lead.campaign.name}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">No campaign</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className={!lead.last_interacted || lead.last_interacted === "no interactions" ? "text-muted-foreground italic" : ""}>
+                            {formatDate(lead.last_interacted || "no interactions")}
                           </span>
                         </TableCell>
                         <TableCell>
                           <Badge 
-                            className={statusColors[lead.status as keyof typeof statusColors]}
+                            className={statusColors[(lead.status || "no status") as keyof typeof statusColors]}
                             variant="outline"
                           >
-                            {lead.status}
+                            {lead.status || "no status"}
                           </Badge>
                         </TableCell>
                         <TableCell>
