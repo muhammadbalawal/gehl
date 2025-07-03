@@ -13,14 +13,14 @@ export interface Lead {
   website: string
   photos: number
   monthlyVisitors: number
-  facebook: {
+  facebook?: {
     name: string
     url: string
     followers: number
     lastPost: string
     runningAds: boolean
     images: string[]
-  }
+  } | null
   instagram?: {
     name: string
     handle: string
@@ -29,12 +29,13 @@ export interface Lead {
     runningAds: boolean
     images: string[]
   } | null
-  google: {
+  google?: {
     name: string
     url: string
     lastPost: string
     runningAds: boolean
     images: string[]
-  }
+  } | null
   websiteImage: string
+  gmbData?: any // Add GMB data for reviews and other details
 } 

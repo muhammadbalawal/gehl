@@ -43,6 +43,39 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
+    // Trigger GMB scraping for leads with GMB links (fire and forget)
+    if (data && data.length > 0) {
+      const leadsWithGmb = data.filter(lead => lead.gmb_link && lead.gmb_link.trim() !== '')
+      
+      console.log(`Found ${leadsWithGmb.length} leads with GMB links, triggering scraping...`)
+      
+      // Call Edge Function for each lead with GMB link
+      leadsWithGmb.forEach(async (lead) => {
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/scrape-gmb`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              lead_id: lead.id,
+              gmb_link: lead.gmb_link,
+              user_id: lead.user_id
+            }),
+          })
+          
+          if (response.ok) {
+            console.log(`GMB scraping triggered for lead ${lead.id}`)
+          } else {
+            console.error(`Failed to trigger GMB scraping for lead ${lead.id}:`, response.status)
+          }
+        } catch (error) {
+          console.error(`Error triggering GMB scraping for lead ${lead.id}:`, error)
+        }
+      })
+    }
+
     return NextResponse.json({
       success: true,
       leads: data,

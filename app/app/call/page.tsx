@@ -46,7 +46,7 @@ interface TranscriptRow {
   timestamp: string;
 }
 
-// Lead data
+// Lead data (hardcoded for fallback)
 const leadsData: Lead[] = [
   {
     id: 1,
@@ -306,31 +306,65 @@ export default function DashboardCallPage() {
           throw new Error('You must be logged in')
         }
         
-        const response = await fetch(`/api/leads?user_id=${session.user.id}&campaign_id=${selectedCampaign.id}`)
-        const result = await response.json()
+                // Fetch leads with GMB data using proper join
+        const { data: leadsWithGmb, error } = await supabase
+          .from('lead')
+          .select(`
+            *,
+            campaign:campaign_id(name),
+            gmb(*)
+          `)
+          .eq('user_id', session.user.id)
+          .eq('campaign_id', selectedCampaign.id)
+          .order('created_at', { ascending: false })
 
-        if (result.success) {
+        if (error) {
+          throw new Error(error.message)
+        }
+
+        if (leadsWithGmb) {
           // Convert database leads to the format expected by the call tabs
-          const formattedLeads: Lead[] = result.leads.map((lead: any, index: number) => ({
-            id: lead.id,
-            name: lead.name || 'Unnamed Lead',
-            shortName: lead.name || 'Unnamed Lead',
-            logo: "/dentist_logo.png", // Default logo
-            category: "Business",
-            rating: 0,
-            totalReviews: 0,
-            hours: "Unknown",
-            phone: lead.phone_number || "No phone",
-            email: lead.email || "No email",
-            address: lead.location || "No address",
-            website: lead.website || "No website",
-            photos: 0,
-            monthlyVisitors: 0,
-            facebook: null,
-            instagram: null,
-            google: null,
-            websiteImage: "/dentist_website.png"
-          }))
+          const formattedLeads: Lead[] = leadsWithGmb.map((lead: any, index: number) => {
+            const gmbData = lead.gmb && lead.gmb.length > 0 ? lead.gmb[0] : null
+            
+            // Debug what we're getting from the join
+            console.log(`Raw lead data for ${lead.name}:`, lead)
+            
+            // Format working hours if available  
+            let formattedHours = "Unknown"
+            if (gmbData?.working_hours) {
+              const hours = gmbData.working_hours
+              const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase().substring(0, 3) // mon, tue, etc
+              const todayKey = Object.keys(hours).find(key => key.toLowerCase().startsWith(today))
+              formattedHours = todayKey ? hours[todayKey] : Object.values(hours)[0] || "Unknown"
+            }
+
+            const formattedLead = {
+              id: lead.id,
+              name: lead.name || 'Unnamed Lead',
+              shortName: lead.name || 'Unnamed Lead', 
+              logo: "/dentist_logo.png",
+              // ONLY use GMB table data - no fallbacks to lead table
+              category: gmbData?.category || "Business", 
+              rating: gmbData?.rating || 0,
+              totalReviews: gmbData?.num_reviews || 0,
+              hours: formattedHours,
+              phone: lead.phone_number || "No phone",
+              email: lead.email || "No email", 
+              address: gmbData?.address || "No address", // Only GMB address
+              website: lead.website || "No website",
+              photos: gmbData?.num_photos || 0,
+              monthlyVisitors: gmbData?.monthly_visitors || 0,
+              facebook: null,
+              instagram: null,
+              google: null,
+              websiteImage: "/dentist_website.png",
+              gmbData: gmbData // Add GMB data for reviews
+            }
+            
+            console.log('Formatted lead:', formattedLead)
+            return formattedLead
+          })
           
           setLeads(formattedLeads)
           setCurrentLeadIndex(0) // Reset to first lead
@@ -417,7 +451,7 @@ export default function DashboardCallPage() {
     
     return {
       role: isAgent ? 'agent' : 'user',
-      name: isAgent ? 'Sarah Miller' : currentLead.name.split(' ')[0] || 'Customer',
+      name: isAgent ? 'Sarah Miller' : (currentLead?.name?.split(' ')[0] || 'Customer'),
       message: transcript.transcript,
       timestamp: transcript.timestamp,
       id: transcript.id

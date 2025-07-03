@@ -27,7 +27,11 @@ export function OverviewTab({ currentLead, isTransitioning, animateOverview, rev
             <h3 className="text-2xl font-bold text-white mb-1">{currentLead.shortName}</h3>
             <p className="text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full">{currentLead.category}</p>
             <div className="flex items-center mt-3">
-              <div className="flex text-yellow-400">★★★★☆</div>
+              <div className="flex text-yellow-400">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <span key={i}>{i < Math.floor(currentLead.rating) ? '★' : '☆'}</span>
+                ))}
+              </div>
               <span className="text-gray-400 text-sm ml-2">({currentLead.rating}/5)</span>
             </div>
           </div>
@@ -93,55 +97,39 @@ export function OverviewTab({ currentLead, isTransitioning, animateOverview, rev
             <h3 className="text-lg font-semibold mb-4 text-white">Recent Reviews</h3>
             <ScrollArea className="h-[calc(100%-3rem)]">
               <div className="space-y-4 pr-4">
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">Alice M.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Dr. Biskup and his team are fantastic. Very professional and friendly. I highly recommend them!"</p>
-                </div>
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">John D.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Great experience, the clinic is clean and modern. The staff is welcoming. Only downside is the waiting time."</p>
-                </div>
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">Sarah P.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Best dentist in the West Island. Painless procedure and very reassuring."</p>
-                </div>
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">Michael R.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Excellent service from start to finish. Dr. Biskup explained everything clearly and the procedure was completely painless."</p>
-                </div>
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">Emma L.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Very satisfied with my dental cleaning. The hygienist was gentle and thorough. Appointment was on time."</p>
-                </div>
-                <div className="border-b border-gray-700 pb-3">
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">David K.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★★</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Outstanding dental care! The office is spotless and the staff made me feel comfortable throughout my visit."</p>
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <span className="font-semibold text-white">Jennifer T.</span>
-                    <div className="flex text-yellow-400 ml-3">★★★★☆</div>
-                  </div>
-                  <p className="text-sm text-gray-300">"Good experience overall. The location is convenient and parking is easy. Would recommend to others in the area."</p>
-                </div>
+                {currentLead.gmbData?.recent_reviews && currentLead.gmbData.recent_reviews.length > 0 ? (
+                  // Show real GMB reviews
+                  currentLead.gmbData.recent_reviews.map((review: any, index: number) => (
+                    <div key={index} className="border-b border-gray-700 pb-3">
+                      <div className="flex items-center mb-1">
+                        <span className="font-semibold text-white">{review.author || 'Anonymous'}</span>
+                        <div className="flex text-yellow-400 ml-3">
+                          {Array.from({ length: 5 }, (_, i) => (
+                            <span key={i}>{i < (review.rating || 0) ? '★' : '☆'}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-300">"{review.text || 'No review text available.'}"</p>
+                      {review.date && (
+                        <p className="text-xs text-gray-500 mt-1">{review.date}</p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  // Fallback to sample reviews if no GMB data
+                  <>
+                    <div className="border-b border-gray-700 pb-3">
+                      <div className="flex items-center mb-1">
+                        <span className="font-semibold text-white">Sample Review</span>
+                        <div className="flex text-yellow-400 ml-3">★★★★☆</div>
+                      </div>
+                      <p className="text-sm text-gray-300">"No recent reviews available from Google My Business data yet."</p>
+                    </div>
+                    <div className="text-center py-4">
+                      <p className="text-sm text-gray-500">GMB reviews will appear here once scraped</p>
+                    </div>
+                  </>
+                )}
               </div>
             </ScrollArea>
           </Card>
