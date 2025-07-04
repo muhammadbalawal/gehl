@@ -268,6 +268,61 @@ export default function DashboardCallPage() {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const currentLead = leads.length > 0 ? leads[currentLeadIndex] : null
 
+  // Simple GMB query for debugging
+  useEffect(() => {
+    const fetchGmbData = async () => {
+      if (!currentLead?.id) {
+        console.log('❌ No current lead ID available')
+        return
+      }
+
+      try {
+        console.log(`🔍 Querying GMB table for lead_id: ${currentLead.id}`)
+        
+        // Check user session first
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        console.log('👤 Current session:', session?.user?.id ? 'Logged in' : 'Not logged in', sessionError)
+        
+        // Try the GMB query
+        const { data: gmbData, error } = await supabase
+          .from('gmb')
+          .select('*')
+          .eq('lead_id', currentLead.id)
+
+        if (error) {
+          console.error('❌ Error querying GMB table:', error)
+          console.error('❌ Error details:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          })
+          return
+        }
+
+        console.log(`✅ GMB data for lead ${currentLead.id}:`, gmbData)
+        
+        if (!gmbData || gmbData.length === 0) {
+          console.log('⚠️ No GMB data found for this lead - likely RLS blocking access')
+          
+          // Try to query total count in GMB table to test RLS
+          const { count, error: countError } = await supabase
+            .from('gmb')
+            .select('*', { count: 'exact', head: true })
+          
+          console.log('🔢 Total GMB records accessible:', count, countError ? `Error: ${countError.message}` : '')
+        } else {
+          console.log(`📊 Found ${gmbData.length} GMB record(s)`)
+        }
+
+      } catch (err) {
+        console.error('❌ Exception querying GMB table:', err)
+      }
+    }
+
+    fetchGmbData()
+  }, [currentLead?.id]) // Run whenever the current lead ID changes
+
   // Fetch campaigns on mount
   useEffect(() => {
     const fetchCampaigns = async () => {

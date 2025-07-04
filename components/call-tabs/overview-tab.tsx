@@ -15,7 +15,7 @@ export function OverviewTab({ currentLead, isTransitioning, animateOverview, rev
   return (
     <div className={`h-full flex gap-4 transition-all duration-300 ${isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
       {/* Left Card: General Information */}
-      <div className="w-1/2 h-full">
+      <div className="w-1/2" style={{ height: `${reviewsCardHeight + 16 + 240}px` }}>
         <Card className={`h-full p-6 overflow-auto transition-all duration-700 ease-out ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <div className="flex flex-col items-center mb-8">
             <div className="relative mb-4">
@@ -42,13 +42,6 @@ export function OverviewTab({ currentLead, isTransitioning, animateOverview, rev
               </div>
               <span className="w-1/3 text-gray-400 text-sm">Reviews</span>
               <span className="text-white font-semibold">{currentLead.totalReviews.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
-              <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
-                <span className="text-white">🕒</span>
-              </div>
-              <span className="w-1/3 text-gray-400 text-sm">Hours</span>
-              <span className="text-white font-semibold">{currentLead.hours}</span>
             </div>
             <div className="flex items-center p-3 bg-gray-800/50 rounded-lg">
               <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center mr-3">
@@ -135,28 +128,34 @@ export function OverviewTab({ currentLead, isTransitioning, animateOverview, rev
           </Card>
         </div>
 
-        {/* Bottom Right Card: Key Metrics */}
-        <div className="h-[30%]">
-          <Card className={`h-full p-4 transition-all duration-700 ease-out delay-400 ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-            <h3 className="text-lg font-semibold mb-3 text-white text-center">Key Metrics</h3>
-            <div className="grid grid-cols-2 gap-3 h-full">
-              <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                <span className="text-2xl font-bold text-white">{currentLead.monthlyVisitors.toLocaleString()}</span>
-                <span className="text-xs text-gray-400 text-center">Monthly Visitors</span>
+        {/* Bottom Right Card: Weekly Schedule */}
+        <div>
+          <Card className={`p-4 transition-all duration-700 ease-out delay-400 ${animateOverview ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`} style={{ height: '240px' }}>
+            <h3 className="text-lg font-semibold mb-3 text-white text-center">Weekly Schedule</h3>
+            <ScrollArea className="h-[calc(100%-2.5rem)]">
+              <div className="space-y-2">
+                {currentLead.gmbData?.working_hours ? (
+                  // Show working hours from GMB data
+                  Object.entries(currentLead.gmbData.working_hours).map(([day, hours]) => (
+                    <div key={day} className="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                      <span className="text-sm font-medium text-gray-300 capitalize w-20">
+                        {day}
+                      </span>
+                      <span className={`text-sm font-semibold ${
+                        hours === 'Closed' || hours === 'closed' ? 'text-red-400' : 'text-white'
+                      }`}>
+                        {hours}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  // Fallback when no working hours data available
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500">Working hours not available</p>
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                <span className="text-2xl font-bold text-white">{currentLead.rating}</span>
-                <span className="text-xs text-gray-400 text-center">Avg Rating</span>
-              </div>
-              <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                <span className="text-2xl font-bold text-white">{currentLead.totalReviews.toLocaleString()}</span>
-                <span className="text-xs text-gray-400 text-center">Total Reviews</span>
-              </div>
-              <div className="flex flex-col items-center justify-center bg-gray-800 rounded-lg p-2">
-                <span className="text-2xl font-bold text-white">{currentLead.photos}</span>
-                <span className="text-xs text-gray-400 text-center">Photos</span>
-              </div>
-            </div>
+            </ScrollArea>
           </Card>
         </div>
       </div>
